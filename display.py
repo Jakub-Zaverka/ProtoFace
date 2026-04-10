@@ -2,14 +2,18 @@ import board
 import displayio
 import framebufferio
 import rgbmatrix
+import adafruit_imageload
 
 DISPLAY_WIDTH = 64
 DISPLAY_HEIGHT = 32
 BIT_DEPTH = 4
 
-PALETTE = displayio.Palette(2)
+PALETTE = displayio.Palette(4)
 PALETTE[0] = 0x000000
 PALETTE[1] = 0x101010
+PALETTE[2] = 0x050505
+PALETTE[3] = 0x020202
+
 
 
 class Display:
@@ -121,3 +125,54 @@ class Display:
             [bitmap[x, y] for x in range(width)]
             for y in range(height)
         ]
+
+    def color_to_palette_index(self, color):
+        """Map an RGB color to the closest color in the display palette."""
+        r = (color >> 16) & 0xFF
+        g = (color >> 8) & 0xFF
+        b = color & 0xFF
+
+        best_index = 0
+        best_distance = 1_000_000
+
+        for i in range(len(PALETTE)):
+            palette_color = PALETTE[i]
+            pr = (palette_color >> 16) & 0xFF
+            pg = (palette_color >> 8) & 0xFF
+            pb = palette_color & 0xFF
+
+            distance = (r - pr) ** 2 + (g - pg) ** 2 + (b - pb) ** 2
+            if distance < best_distance:
+                best_distance = distance
+                best_index = i
+
+        return best_index
+
+    def source_pixel_to_color(self, bitmap, pixel_shader, x, y):
+        """Read one source pixel as an RGB integer."""
+        pixel_value = bitmap[x, y]
+
+        if isinstance(pixel_shader, displayio.Palette):
+            return pixel_shader[pixel_value]
+
+        return pixel_value
+
+    def load_bmp_into_matrix(self, matrix_group, path):
+        """Load a BMP file and remap its pixels into the current palette."""
+        bitmap, pixel_shader = adafruit_imageload.load(
+            path,
+            bitmap=displayio.Bitmap,
+            palette=displayio.Palette,
+        )
+
+        matrix = [
+            [
+                self.color_to_palette_index(
+                    self.source_pixel_to_color(bitmap, pixel_shader, x, y)
+                )
+                for x in range(bitmap.width)
+            ]
+            for y in range(bitmap.height)
+        ]
+
+        self.update_matrix(matrix_group, matrix)

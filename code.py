@@ -1,27 +1,18 @@
 import time
-
 from display import Display
-import adafruit_imageload
-import displayio
+from accelerometer import Accelerometer
 
 
 display = Display()
+accelerometer = Accelerometer()
 
 nose_matrix = display.create_matrix(
     name="nose",
-    position_x=5,
-    position_y=5,
-    matrix_width=4,
-    matrix_height=4,
+    position_x=0,
+    position_y=0,
+    matrix_width=32,
+    matrix_height=16,
 )
-
-# display.update_matrix(
-#     nose_matrix,
-#     [[1,1,1,1],
-#      [0,1,1,0],
-#      [0,1,1,0],
-#      [1,0,0,1]],
-# )
 
 eye_matrix = display.create_matrix(
     name="eye",
@@ -31,20 +22,26 @@ eye_matrix = display.create_matrix(
     matrix_height=16,
 )
 
-eye_bitmap, palette = adafruit_imageload.load(
-    "/protogen_eye_32x16.bmp",
-    bitmap=displayio.Bitmap,
-    palette=displayio.Palette,
+mouth_matrix = display.create_matrix(
+    name="mouth",
+    position_x=0,
+    position_y=16,
+    matrix_width=32,
+    matrix_height=16,
 )
 
+display.load_bmp_into_matrix(eye_matrix, "/protogen_eye_32x16.bmp")
+
+display.load_bmp_into_matrix(nose_matrix, "/protogen_eye_32x16.bmp")
 
 
 
-display.update_matrix(eye_matrix, eye_bitmap)
+# display.update_matrix(eye_matrix, eye_bitmap)
 
-print(display.matrix_to_list(nose_matrix))
+# print(display.matrix_to_list(nose_matrix))
 
 display.refresh()
 
 while True:
-    time.sleep(1)
+    time.sleep(0.1)
+    print(accelerometer.derivation())
