@@ -32,7 +32,7 @@ mouth_matrix = display.create_matrix(
 
 display.load_bmp_into_matrix(eye_matrix, "/protogen_eye_32x16.bmp")
 
-display.load_bmp_into_matrix(nose_matrix, "/protogen_eye_32x16.bmp")
+# display.load_bmp_into_matrix(nose_matrix, "/protogen_eye_32x16.bmp")
 
 
 
@@ -42,6 +42,12 @@ display.load_bmp_into_matrix(nose_matrix, "/protogen_eye_32x16.bmp")
 
 display.refresh()
 
+MIN_MOVEMENT = 3
 while True:
+    #if movement
+    if accelerometer.derivation()[0] > MIN_MOVEMENT or accelerometer.derivation()[1] > MIN_MOVEMENT or accelerometer.derivation()[2] > MIN_MOVEMENT:
+        print("move")
+
+    # print(accelerometer.derivation())
     time.sleep(0.1)
-    print(accelerometer.derivation())
+    print("----")
