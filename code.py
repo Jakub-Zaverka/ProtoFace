@@ -1,10 +1,10 @@
 import time
 from display import Display
 from accelerometer import Accelerometer
-import analogio
-import board
+from mic import Microphone
 
-MIC_ON = False
+
+MIC_ON = True
 ACCELEROMETER_ON = False
 VERBOSE = True
 MIN_MOVEMENT = 0.5
@@ -39,17 +39,12 @@ mouth_matrix = display.create_matrix(
 
 display.load_bmp_into_matrix(eye_matrix, "/protogen_eye_32x16.bmp")
 
-# display.load_bmp_into_matrix(nose_matrix, "/protogen_eye_32x16.bmp")
-
-
-
-# display.update_matrix(eye_matrix, eye_bitmap)
-
-# print(display.matrix_to_list(nose_matrix))
 
 display.refresh()
+
+
 if MIC_ON:
-    mic = analogio.AnalogIn(board.A3)
+    mic = Microphone()
 
 
 
@@ -68,11 +63,10 @@ while True:
             print(accelerometer.derivation())
 
         if MIC_ON:
-            print(mic.value)
+            print(mic.get_value())
 
         print("----")
     
     
     display.refresh()
     time.sleep(0.1)
-    
