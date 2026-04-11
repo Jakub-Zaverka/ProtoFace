@@ -2,10 +2,15 @@ import time
 from display import Display
 from accelerometer import Accelerometer
 from mic import Microphone
+from I2C_sim import APDSSensor
+from I2C_sim import OLEDDisplay
 
 
+
+ACCELEROMETER_ON = True
 MIC_ON = True
-ACCELEROMETER_ON = False
+APDS_ON = True
+SSD1306_ON = True
 VERBOSE = True
 MIN_MOVEMENT = 0.5
 
@@ -46,6 +51,11 @@ display.refresh()
 if MIC_ON:
     mic = Microphone()
 
+if APDS_ON:
+    apds = APDSSensor()
+
+if SSD1306_ON:
+    oled = OLEDDisplay()
 
 
 while True:
@@ -57,6 +67,9 @@ while True:
             eye_matrix["tile"].x -= int(accelerometer.derivation()[0])
             eye_matrix["tile"].y += int(accelerometer.derivation()[1])
 
+    
+    if SSD1306_ON:
+        oled.show_text("Test")
 
     if VERBOSE:
         if ACCELEROMETER_ON:
@@ -64,6 +77,14 @@ while True:
 
         if MIC_ON:
             print(mic.get_value())
+
+        if APDS_ON:
+            # print(apds.scan())
+            print(apds.get_value())
+            print(apds.get_color())
+        
+        # if SSD1306_ON:
+        #     print(oled.scan())
 
         print("----")
     
