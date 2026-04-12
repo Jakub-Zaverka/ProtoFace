@@ -157,13 +157,18 @@ class Display:
 
         return pixel_value
 
-    def load_bmp_into_matrix(self, matrix_group, path):
-        """Load a BMP file and remap its pixels into the current palette."""
-        bitmap, pixel_shader = adafruit_imageload.load(
-            path,
-            bitmap=displayio.Bitmap,
-            palette=displayio.Palette,
-        )
+    def load_bmp_into_matrix(self, matrix_group, source):
+        """Load a BMP path or in-memory bitmap and remap it into the current palette."""
+        if isinstance(source, str):
+            bitmap, pixel_shader = adafruit_imageload.load(
+                source,
+                bitmap=displayio.Bitmap,
+                palette=displayio.Palette,
+            )
+        elif isinstance(source, tuple) and len(source) == 2:
+            bitmap, pixel_shader = source
+        else:
+            raise TypeError("source must be a BMP path or a (bitmap, pixel_shader) tuple")
 
         matrix = [
             [

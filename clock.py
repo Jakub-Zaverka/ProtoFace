@@ -34,7 +34,7 @@ class Clock:
 
         rtc.RTC().datetime = self._ntp.datetime
         self._synced = True
-        print(rtc.RTC().datetime)
+        # print(rtc.RTC().datetime)
         return rtc.RTC().datetime
 
     def resync(self):

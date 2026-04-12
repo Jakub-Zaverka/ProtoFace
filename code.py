@@ -8,6 +8,7 @@ import board
 import digitalio
 from wifi_network import Wifi
 from clock import Clock
+import emotes
 
 
 
@@ -17,7 +18,7 @@ APDS_ON = True
 SSD1306_ON = True
 WIFI_ON = True
 VERBOSE = False
-MIN_MOVEMENT = 0.5
+MIN_MOVEMENT = 1
 
 display = Display()
 if ACCELEROMETER_ON:
@@ -53,6 +54,16 @@ mouth_matrix = display.create_matrix(
     matrix_height=16,
 )
 
+whole_matrix = display.create_matrix(
+    name="whole",
+    position_x=0,
+    position_y=0,
+    matrix_width=64,
+    matrix_height=32,
+)
+
+whole_matrix["tile"].hidden = True
+
 display.load_bmp_into_matrix(eye_matrix, "/faces/eye.bmp")
 display.load_bmp_into_matrix(nose_matrix, "/faces/nose.bmp")
 display.load_bmp_into_matrix(mouth_matrix, "/faces/mouth.bmp")
@@ -74,9 +85,6 @@ if SSD1306_ON:
 BLINK_TIME_SET = 10
 BOOP_TIMER = 5
 blink_time = 0
-eye_closed = False
-boop = False
-boop_count = 0
 
 
 btn_down = digitalio.DigitalInOut(board.BUTTON_DOWN)
@@ -85,59 +93,27 @@ btn_down.switch_to_input(pull=digitalio.Pull.UP)
 btn_up.switch_to_input(pull=digitalio.Pull.UP)
 
 EMOTE_TIMER = 10
-emote_time = 0
-emote = False
-current_emote_bmp = None
-current_emote_timer = 0
+BLINK_EMOTE_TIMER = max(1, BLINK_TIME_SET // 6)
+
+EYE_IDLE_EMOTE = emotes.create_image_emote("/faces/eye.bmp", "eye")
+EYE_SLEEP_EMOTE = emotes.create_image_emote("/faces/sleep.bmp", "sleep")
+EYE_BLINK_EMOTE = emotes.create_image_emote("/faces/eye_blink.bmp", "blink")
+EYE_BOOP_EMOTE = emotes.create_image_emote("/faces/eye_open.bmp", "boop")
+
+def set_face_hidden(hidden):
+    eye_matrix["tile"].hidden = hidden
+    nose_matrix["tile"].hidden = hidden
+    mouth_matrix["tile"].hidden = hidden
 
 
-def update_emote(
-    requested_bmp,
-    requested_timer,
-    emote_active,
-    emote_time,
-    current_emote_bmp,
-    current_emote_timer,
-    display,
-    target_matrix,
-    idle_bmp,
-    verbose=False,
-):
-    emote_started = False
-
-    if requested_bmp is not None:
-        if not emote_active or current_emote_bmp != requested_bmp:
-            display.load_bmp_into_matrix(target_matrix, requested_bmp)
-            emote_started = True
-            if verbose:
-                print("emote")
-                print(requested_bmp)
-        emote_active = True
-        emote_time = 0
-        current_emote_bmp = requested_bmp
-        current_emote_timer = requested_timer
-    elif emote_active:
-        emote_time += 1
-
-        if emote_time >= current_emote_timer:
-            emote_active = False
-            emote_time = 0
-            current_emote_bmp = None
-            current_emote_timer = 0
-            display.load_bmp_into_matrix(target_matrix, idle_bmp)
-
-    return (
-        emote_active,
-        emote_time,
-        current_emote_bmp,
-        current_emote_timer,
-        emote_started,
-    )
-
+eye_region = emotes.create_region("eye", eye_matrix, EYE_IDLE_EMOTE)
+nose_region = emotes.create_region("nose", nose_matrix, "/faces/nose.bmp")
+mouth_region = emotes.create_region("mouth", mouth_matrix, "/faces/mouth.bmp")
+whole_region = emotes.create_region("whole", whole_matrix, hidden_when_idle=True)
 
 while True:
     #if movement
-    if ACCELEROMETER_ON:
+    if ACCELEROMETER_ON and not whole_region["active"]:
         if abs(accelerometer.derivation()[0]) > MIN_MOVEMENT or abs(accelerometer.derivation()[1]) > MIN_MOVEMENT or abs(accelerometer.derivation()[2] > MIN_MOVEMENT):
             print("move")
             #correct accelerometer setting
@@ -147,6 +123,8 @@ while True:
             nose_matrix["tile"].y += int(accelerometer.derivation()[1])
             mouth_matrix["tile"].x -= int(accelerometer.derivation()[0])
             mouth_matrix["tile"].y += int(accelerometer.derivation()[1])
+            whole_matrix["tile"].x -= int(accelerometer.derivation()[0])
+            whole_matrix["tile"].y += int(accelerometer.derivation()[1])
         else:
             eye_matrix["tile"].x = 31
             eye_matrix["tile"].y = 0
@@ -154,98 +132,113 @@ while True:
             nose_matrix["tile"].y = 0
             mouth_matrix["tile"].x = 0
             mouth_matrix["tile"].y = 16
-            pass
+            whole_matrix["tile"].x = 0
+            whole_matrix["tile"].y = 0
     
-    if MIC_ON:
-        if mic.get_value() > 10:
+    if MIC_ON and not whole_region["active"]:
+        if mic.get_value() > 5:
             display.load_bmp_into_matrix(mouth_matrix, "/faces/mouth_speak.bmp")
             if VERBOSE: 
                 print("speak")
         else:
             display.load_bmp_into_matrix(mouth_matrix, "/faces/mouth.bmp")
 
-    
 
-    #Blinking
-    if not boop and not emote:
-        if blink_time >= BLINK_TIME_SET and not eye_closed:
-            eye_closed = True
-            display.load_bmp_into_matrix(eye_matrix, "/faces/eye_blink.bmp")
-            blink_time = 0
-
-        elif blink_time >= BLINK_TIME_SET // 6 and eye_closed:
-            eye_closed = False
-            display.load_bmp_into_matrix(eye_matrix, "/faces/eye.bmp")
-            blink_time = 0
-            if VERBOSE:
-                print("blink")
-
-        else:
-            blink_time += 1
 
     #Emote
-    requested_emote_bmp = None
-    requested_emote_timer = 0
+    requested_eye_bmp = None
+    requested_eye_timer = 0
+    requested_nose_bmp = None
+    requested_nose_timer = 0
+    requested_mouth_bmp = None
+    requested_mouth_timer = 0
+    requested_whole_bmp = None
+    requested_whole_timer = 0
 
-    if not btn_up.value:
-        requested_emote_bmp = "/faces/cross.bmp"
-        requested_emote_timer = EMOTE_TIMER
-    elif not btn_down.value:
-        requested_emote_bmp = "/faces/sleep.bmp"
-        requested_emote_timer = EMOTE_TIMER + 10
+    if not btn_up.value and not whole_region["active"]:
+        requested_whole_bmp = emotes.create_clock_emote(device_clock)
+        requested_whole_timer = EMOTE_TIMER
 
-    (
-        emote,
-        emote_time,
-        current_emote_bmp,
-        current_emote_timer,
-        emote_started,
-    ) = update_emote(
-        requested_bmp=requested_emote_bmp,
-        requested_timer=requested_emote_timer,
-        emote_active=emote,
-        emote_time=emote_time,
-        current_emote_bmp=current_emote_bmp,
-        current_emote_timer=current_emote_timer,
-        display=display,
-        target_matrix=eye_matrix,
-        idle_bmp="/faces/eye.bmp",
+    if not btn_down.value and not whole_region["active"]:
+        requested_eye_bmp = EYE_SLEEP_EMOTE
+        requested_eye_timer = EMOTE_TIMER + 10
+
+    if APDS_ON and not whole_region["active"] and requested_eye_bmp is None:
+        if apds.get_value() > 200:
+            requested_eye_bmp = EYE_BOOP_EMOTE
+            requested_eye_timer = BOOP_TIMER
+
+    if not whole_region["active"] and requested_eye_bmp is None:
+        if not eye_region["active"]:
+            blink_time += 1
+            if blink_time >= BLINK_TIME_SET:
+                requested_eye_bmp = EYE_BLINK_EMOTE
+                requested_eye_timer = BLINK_EMOTE_TIMER
+                blink_time = 0
+        elif emotes.get_emote_name(eye_region) != "blink":
+            blink_time = 0
+
+    nose_emote, nose_started = emotes.update_emote(
+        display,
+        nose_region,
+        source=requested_nose_bmp,
+        duration=requested_nose_timer,
         verbose=VERBOSE,
     )
 
-    if emote_started:
-        boop = False
-        boop_count = 0
-        eye_closed = False
+    mouth_emote, mouth_started = emotes.update_emote(
+        display,
+        mouth_region,
+        source=requested_mouth_bmp,
+        duration=requested_mouth_timer,
+        verbose=VERBOSE,
+    )
 
-    # boop
-    if not emote:
-        if APDS_ON:
-            if apds.get_value() > 200:
-                if not boop:
-                    display.load_bmp_into_matrix(eye_matrix, "/faces/eye_open.bmp")
-                boop = True
-                boop_count = 0
-                eye_closed = False
-                if VERBOSE:
-                    print("boop")
+    eye_emote, eye_started = emotes.update_emote(
+        display,
+        eye_region,
+        source=requested_eye_bmp,
+        duration=requested_eye_timer,
+        verbose=VERBOSE,
+    )
 
-            elif boop:
-                boop_count += 1
+    whole_emote, whole_started = emotes.update_emote(
+        display,
+        whole_region,
+        source=requested_whole_bmp,
+        duration=requested_whole_timer,
+        verbose=VERBOSE,
+    )
 
-                if boop_count >= BOOP_TIMER:
-                    boop = False
-                    boop_count = 0
-                    eye_closed = False
-                    display.load_bmp_into_matrix(eye_matrix, "/faces/eye.bmp")
+    set_face_hidden(whole_region["active"])
+
+    if eye_started or nose_started or mouth_started or whole_started:
+        if emotes.get_emote_name(eye_region) != "blink":
+            blink_time = 0
 
     if SSD1306_ON:
-        split_emote_name = (str(current_emote_bmp)).split("/")
+        if whole_region["active"]:
+            status_region = whole_region
+        elif eye_region["active"]:
+            status_region = eye_region
+        elif nose_region["active"]:
+            status_region = nose_region
+        elif mouth_region["active"]:
+            status_region = mouth_region
+        else:
+            status_region = eye_region
+
+        boop_active = emotes.get_emote_name(eye_region) == "boop"
         oled.draw_status(
-            boop=boop,
-            emote=emote,
-            emote_time=emote_time,
-            emote_name=split_emote_name[-1],
+            boop=boop_active,
+            emote=(
+                eye_region["active"]
+                or nose_region["active"]
+                or mouth_region["active"]
+                or whole_region["active"]
+            ),
+            emote_time=status_region["elapsed"],
+            emote_name=emotes.get_emote_name(status_region),
             current_time=device_clock.get_time() if WIFI_ON else "--:--",
         )
 
