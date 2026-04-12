@@ -2,7 +2,6 @@ import board
 import busio
 from adafruit_apds9960.apds9960 import APDS9960
 import adafruit_ssd1306
-from adafruit_gfx.gfx import GFX
 
 I2C_SCL_PIN = board.A1
 I2C_SDA_PIN = board.A2
@@ -60,6 +59,7 @@ _FONT_5X7 = {
 
 
 def get_i2c():
+    """Return a shared I2C bus instance for all onboard I2C devices."""
     global _shared_i2c
 
     if _shared_i2c is None:
@@ -69,6 +69,7 @@ def get_i2c():
 
 
 def scan_i2c():
+    """Scan the shared I2C bus and return detected device addresses."""
     i2c = get_i2c()
 
     while not i2c.try_lock():
@@ -80,6 +81,7 @@ def scan_i2c():
 
 
 class APDSSensor:
+    """Wrapper around the APDS9960 sensor on the shared I2C bus."""
     def __init__(self):
         self.i2c = get_i2c()
         self.sensor = APDS9960(self.i2c)
@@ -87,18 +89,22 @@ class APDSSensor:
         self.sensor.enable_color = True
 
     def scan(self):
+        """Return visible I2C addresses for quick bus diagnostics."""
         return scan_i2c()
 
     def get_value(self):
+        """Return the current proximity reading."""
         return self.sensor.proximity
 
     def get_color(self):
+        """Return current color data when available, otherwise None."""
         if self.sensor.color_data_ready:
             return self.sensor.color_data
         return None
 
 
 class OLEDDisplay:
+    """Text-only SSD1306 OLED helper using the shared I2C bus."""
     def __init__(self, width=OLED_WIDTH, height=OLED_HEIGHT, address=OLED_ADDRESS):
         self.i2c = get_i2c()
         self.width = width
@@ -109,20 +115,23 @@ class OLEDDisplay:
             self.i2c,
             addr=address,
         )
-        self.gfx = self._create_gfx()
         self.clear()
 
     def scan(self):
+        """Return visible I2C addresses for quick bus diagnostics."""
         return scan_i2c()
 
     def clear(self):
+        """Clear the OLED framebuffer and update the display."""
         self.display.fill(0)
         self.display.show()
 
     def get_value(self):
+        """Return the underlying SSD1306 display instance."""
         return self.display
 
     def show_text(self, text, x=0, y=0, clear=True):
+        """Draw text at the given position and optionally clear first."""
         if clear:
             self.display.fill(0)
 
@@ -131,57 +140,16 @@ class OLEDDisplay:
         self.display.show()
 
     def draw_status(self, boop=False, emote=False, emote_time=0, emote_name=""):
-        self.display.fill(0)
-        self.gfx.round_rect(0, 0, self.width, self.height, 6, 1)
-        self.gfx.hline(4, 14, self.width - 8, 1)
-
-        self._draw_text("STATUS", 34, 4)
-
-        self.gfx.circle(14, 28, 7, 1)
-        if boop:
-            self.gfx.fill_circle(14, 28, 4, 1)
-        self._draw_text("BOOP", 28, 24)
-        self._draw_text("ON" if boop else "OFF", 84, 24)
-
-        self.gfx.rect(6, 40, self.width - 12, 18, 1)
-        if emote:
-            self.gfx.fill_rect(8, 42, self.width - 16, 14, 1)
-            self._draw_text(emote_name, 12, 46, color=0)
-        else:
-            self._draw_text(emote_name, 12, 46)
-
-        
-        self._draw_text(str(emote_time), 96, 46, color=0 if emote else 1)
-        self.display.show()
-
-    def _create_gfx(self):
-        return GFX(
-            self.width,
-            self.height,
-            pixel=self._pixel,
-            hline=self._hline,
-            vline=self._vline,
-            fill_rect=self._fill_rect,
-            text=self._draw_text,
+        """Render a simple multiline status screen for boop and emote."""
+        text = (
+            f"Boop: {'ON' if boop else 'OFF'}\n"
+            f"Emote: {'ON' if emote else 'OFF'}\n"
+            f"{emote_name} {emote_time}"
         )
-
-    def _pixel(self, x, y, color=1):
-        if 0 <= x < self.width and 0 <= y < self.height:
-            self.display.pixel(x, y, color)
-
-    def _hline(self, x, y, width, color=1):
-        for offset in range(width):
-            self._pixel(x + offset, y, color)
-
-    def _vline(self, x, y, height, color=1):
-        for offset in range(height):
-            self._pixel(x, y + offset, color)
-
-    def _fill_rect(self, x, y, width, height, color=1):
-        for row in range(height):
-            self._hline(x, y + row, width, color)
+        self.show_text(text)
 
     def _draw_text(self, text, x=0, y=0, color=1):
+        """Draw multiline text using the built-in 5x7 bitmap font."""
         cursor_x = x
         cursor_y = y
 
@@ -202,6 +170,7 @@ class OLEDDisplay:
                 break
 
     def _draw_char(self, char, x, y, color=1):
+        """Draw a single character from the local bitmap font table."""
         glyph = _FONT_5X7.get(char)
         if glyph is None:
             glyph = _FONT_5X7.get(char.upper(), _FONT_5X7["?"])
@@ -209,4 +178,5 @@ class OLEDDisplay:
         for column, bits in enumerate(glyph):
             for row in range(7):
                 if bits & (1 << row):
-                    self._pixel(x + column, y + row, color)
+                    if 0 <= x + column < self.width and 0 <= y + row < self.height:
+                        self.display.pixel(x + column, y + row, color)
