@@ -92,26 +92,39 @@ btn_up = digitalio.DigitalInOut(board.BUTTON_UP)
 btn_down.switch_to_input(pull=digitalio.Pull.UP)
 btn_up.switch_to_input(pull=digitalio.Pull.UP)
 
+# Emote logic:
+# Each region tracks one display area and remembers its current emote state.
+# In every loop we prepare requested_* values for each region:
+#   requested_*_bmp   -> what should be shown in that region this loop
+#   requested_*_timer -> how long the emote should stay active
+# emotes.update_emote() is the only place that starts, refreshes and ends emotes.
+# When an emote ends, the region returns to its idle source automatically.
 EMOTE_TIMER = 10
 BLINK_EMOTE_TIMER = max(1, BLINK_TIME_SET // 6)
 
+# Prebuilt emote sources for the eye and mouth regions.
 EYE_IDLE_EMOTE = emotes.create_image_emote("/faces/eye.bmp", "eye")
 EYE_SLEEP_EMOTE = emotes.create_image_emote("/faces/sleep.bmp", "sleep")
 EYE_BLINK_EMOTE = emotes.create_image_emote("/faces/eye_blink.bmp", "blink")
 EYE_BOOP_EMOTE = emotes.create_image_emote("/faces/eye_open.bmp", "boop")
+MOUTH_IDLE_EMOTE = emotes.create_image_emote("/faces/mouth.bmp", "mouth")
+MOUTH_SPEAK_EMOTE = emotes.create_image_emote("/faces/mouth_speak.bmp", "speak")
 
 def set_face_hidden(hidden):
+    # Whole-screen emotes temporarily hide the normal face regions below them.
     eye_matrix["tile"].hidden = hidden
     nose_matrix["tile"].hidden = hidden
     mouth_matrix["tile"].hidden = hidden
 
 
+# Each region binds one logical emote channel to one physical matrix.
 eye_region = emotes.create_region("eye", eye_matrix, EYE_IDLE_EMOTE)
 nose_region = emotes.create_region("nose", nose_matrix, "/faces/nose.bmp")
-mouth_region = emotes.create_region("mouth", mouth_matrix, "/faces/mouth.bmp")
+mouth_region = emotes.create_region("mouth", mouth_matrix, MOUTH_IDLE_EMOTE)
 whole_region = emotes.create_region("whole", whole_matrix, hidden_when_idle=True)
 
 while True:
+    
     #if movement
     if ACCELEROMETER_ON and not whole_region["active"]:
         if abs(accelerometer.derivation()[0]) > MIN_MOVEMENT or abs(accelerometer.derivation()[1]) > MIN_MOVEMENT or abs(accelerometer.derivation()[2] > MIN_MOVEMENT):
@@ -135,17 +148,10 @@ while True:
             whole_matrix["tile"].x = 0
             whole_matrix["tile"].y = 0
     
-    if MIC_ON and not whole_region["active"]:
-        if mic.get_value() > 5:
-            display.load_bmp_into_matrix(mouth_matrix, "/faces/mouth_speak.bmp")
-            if VERBOSE: 
-                print("speak")
-        else:
-            display.load_bmp_into_matrix(mouth_matrix, "/faces/mouth.bmp")
-
 
 
     #Emote
+    # Per-loop emote requests. None means "no new request for this region now".
     requested_eye_bmp = None
     requested_eye_timer = 0
     requested_nose_bmp = None
@@ -155,19 +161,36 @@ while True:
     requested_whole_bmp = None
     requested_whole_timer = 0
 
+    # Fullscreen clock emote has highest priority because it covers the whole face.
     if not btn_up.value and not whole_region["active"]:
         requested_whole_bmp = emotes.create_clock_emote(device_clock)
         requested_whole_timer = EMOTE_TIMER
 
-    if not btn_down.value and not whole_region["active"]:
-        requested_eye_bmp = EYE_SLEEP_EMOTE
-        requested_eye_timer = EMOTE_TIMER + 10
+    # if not btn_down.value and not whole_region["active"]:
+    #     requested_eye_bmp = EYE_SLEEP_EMOTE
+    #     requested_eye_timer = EMOTE_TIMER + 10
 
+    if not btn_down.value and not whole_region["active"]:
+        requested_eye_bmp = EYE_BOOP_EMOTE
+        requested_eye_timer = EMOTE_TIMER
+        requested_mouth_bmp = MOUTH_SPEAK_EMOTE
+        requested_mouth_timer = EMOTE_TIMER
+
+    # Microphone speaking is a short mouth emote refreshed while sound is present.
+    if MIC_ON and not whole_region["active"]:
+        if mic.get_value() > 5:
+            requested_mouth_bmp = MOUTH_SPEAK_EMOTE
+            requested_mouth_timer = 1
+            if VERBOSE:
+                print("speak")
+
+    # Proximity sensor triggers the eye "boop" emote unless something else already won.
     if APDS_ON and not whole_region["active"] and requested_eye_bmp is None:
         if apds.get_value() > 200:
             requested_eye_bmp = EYE_BOOP_EMOTE
             requested_eye_timer = BOOP_TIMER
 
+    # Blink is the fallback eye emote when nothing else uses the eyes.
     if not whole_region["active"] and requested_eye_bmp is None:
         if not eye_region["active"]:
             blink_time += 1
@@ -210,13 +233,19 @@ while True:
         verbose=VERBOSE,
     )
 
+    # Hide normal face parts while a whole-screen emote is active.
     set_face_hidden(whole_region["active"])
 
     if eye_started or nose_started or mouth_started or whole_started:
+        # Restart blink cadence after any non-blink eye change begins.
         if emotes.get_emote_name(eye_region) != "blink":
             blink_time = 0
 
+
+
+    #OLED screen
     if SSD1306_ON:
+        # Show the most relevant active region on the status OLED.
         if whole_region["active"]:
             status_region = whole_region
         elif eye_region["active"]:
