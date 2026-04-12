@@ -11,7 +11,7 @@ ACCELEROMETER_ON = True
 MIC_ON = True
 APDS_ON = True
 SSD1306_ON = True
-VERBOSE = True
+VERBOSE = False
 MIN_MOVEMENT = 0.5
 
 display = Display()
@@ -38,11 +38,13 @@ mouth_matrix = display.create_matrix(
     name="mouth",
     position_x=0,
     position_y=16,
-    matrix_width=32,
+    matrix_width=64,
     matrix_height=16,
 )
 
-display.load_bmp_into_matrix(eye_matrix, "/protogen_eye_32x16.bmp")
+display.load_bmp_into_matrix(eye_matrix, "/faces/eye.bmp")
+display.load_bmp_into_matrix(nose_matrix, "/faces/nose.bmp")
+display.load_bmp_into_matrix(mouth_matrix, "/faces/mouth.bmp")
 
 
 display.refresh()
@@ -58,6 +60,10 @@ if SSD1306_ON:
     oled = OLEDDisplay()
 
 
+BLINK_TIME_SET = 10
+blink_time = 0
+eye_closed = False
+
 while True:
     #if movement
     if ACCELEROMETER_ON:
@@ -66,25 +72,55 @@ while True:
             #correct accelerometer setting
             eye_matrix["tile"].x -= int(accelerometer.derivation()[0])
             eye_matrix["tile"].y += int(accelerometer.derivation()[1])
+        else:
+            eye_matrix["tile"].x = 31
+            eye_matrix["tile"].y = 0
+            pass
+    
+    if MIC_ON:
+        if mic.get_value() > 20:
+            display.load_bmp_into_matrix(mouth_matrix, "/faces/mouth_speak.bmp")
+            print("speak")
+        else:
+            display.load_bmp_into_matrix(mouth_matrix, "/faces/mouth.bmp")
 
     
+
+
+    if blink_time >= BLINK_TIME_SET and not eye_closed:
+        eye_closed = True
+        display.load_bmp_into_matrix(eye_matrix, "/faces/eye_blink.bmp")
+        blink_time = 0
+
+    elif blink_time >= BLINK_TIME_SET // 6 and eye_closed:
+        eye_closed = False
+        display.load_bmp_into_matrix(eye_matrix, "/faces/eye.bmp")
+        blink_time = 0
+        print("blink")
+
+    else:
+        blink_time += 1
+
+
     if SSD1306_ON:
         oled.show_text("Test")
 
+    if APDS_ON:
+        if apds.get_value() > 200:
+            #boop
+            pass
+
     if VERBOSE:
         if ACCELEROMETER_ON:
-            print(accelerometer.derivation())
+            print(f"Accelerometer: {accelerometer.derivation()}")
 
         if MIC_ON:
-            print(mic.get_value())
+            print(f"Mic: {mic.get_value()}")
 
         if APDS_ON:
             # print(apds.scan())
-            print(apds.get_value())
-            print(apds.get_color())
-        
-        # if SSD1306_ON:
-        #     print(oled.scan())
+            #print(apds.get_color())
+            print(f"APDS: {apds.get_value()}")
 
         print("----")
     
