@@ -130,7 +130,7 @@ class OLEDDisplay:
 
         self.display.show()
 
-    def draw_status(self, boop=False, emote=False, emote_time=0):
+    def draw_status(self, boop=False, emote=False, emote_time=0, emote_name=""):
         self.display.fill(0)
         self.gfx.round_rect(0, 0, self.width, self.height, 6, 1)
         self.gfx.hline(4, 14, self.width - 8, 1)
@@ -146,10 +146,11 @@ class OLEDDisplay:
         self.gfx.rect(6, 40, self.width - 12, 18, 1)
         if emote:
             self.gfx.fill_rect(8, 42, self.width - 16, 14, 1)
-            self._draw_text("EMOTE", 12, 46, color=0)
+            self._draw_text(emote_name, 12, 46, color=0)
         else:
-            self._draw_text("EMOTE", 12, 46)
+            self._draw_text(emote_name, 12, 46)
 
+        
         self._draw_text(str(emote_time), 96, 46, color=0 if emote else 1)
         self.display.show()
 
