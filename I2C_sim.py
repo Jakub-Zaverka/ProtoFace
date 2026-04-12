@@ -139,12 +139,13 @@ class OLEDDisplay:
 
         self.display.show()
 
-    def draw_status(self, boop=False, emote=False, emote_time=0, emote_name=""):
+    def draw_status(self, boop=False, emote=False, emote_time=0, emote_name="", current_time = "00:00"):
         """Render a simple multiline status screen for boop and emote."""
         text = (
             f"Boop: {'ON' if boop else 'OFF'}\n"
             f"Emote: {'ON' if emote else 'OFF'}\n"
-            f"{emote_name} {emote_time}"
+            f"{emote_name} {emote_time}\n"
+            f"{current_time}"
         )
         self.show_text(text)
 

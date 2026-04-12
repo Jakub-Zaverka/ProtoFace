@@ -7,6 +7,7 @@ from I2C_sim import OLEDDisplay
 import board
 import digitalio
 from wifi_network import Wifi
+from clock import Clock
 
 
 
@@ -25,7 +26,8 @@ if ACCELEROMETER_ON:
 if WIFI_ON:
     wifi = Wifi()
     wifi.connect()
-    wifi.get_time_ntp()
+    device_clock = Clock(wifi)
+    device_clock.sync_ntp()
 
 nose_matrix = display.create_matrix(
     name="nose",
@@ -239,7 +241,13 @@ while True:
 
     if SSD1306_ON:
         split_emote_name = (str(current_emote_bmp)).split("/")
-        oled.draw_status(boop=boop, emote=emote, emote_time=emote_time, emote_name=split_emote_name[-1])
+        oled.draw_status(
+            boop=boop,
+            emote=emote,
+            emote_time=emote_time,
+            emote_name=split_emote_name[-1],
+            current_time=device_clock.get_time() if WIFI_ON else "--:--",
+        )
 
 
 
