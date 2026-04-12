@@ -76,12 +76,16 @@ btn_up = digitalio.DigitalInOut(board.BUTTON_UP)
 EMOTE_TIMER = 10
 emote_time = 0
 emote = False
+current_emote_bmp = None
+current_emote_timer = 0
 
 
 def handle_emote(
     button_pressed,
     emote_active,
     emote_time,
+    current_emote_bmp,
+    current_emote_timer,
     display,
     target_matrix,
     active_bmp,
@@ -89,23 +93,39 @@ def handle_emote(
     timer_limit,
     verbose=False,
 ):
+    emote_started = False
+    emote_ended = False
+
     if button_pressed:
-        if not emote_active:
+        if not emote_active or current_emote_bmp != active_bmp:
             display.load_bmp_into_matrix(target_matrix, active_bmp)
+            emote_started = True
+            if verbose:
+                print("emote")
+                print("pressed down")
         emote_active = True
         emote_time = 0
-        if verbose:
-            print("emote")
-            print("pressed down")
-    elif emote_active:
+        current_emote_bmp = active_bmp
+        current_emote_timer = timer_limit
+    elif emote_active and current_emote_bmp == active_bmp:
         emote_time += 1
 
-        if emote_time >= timer_limit:
+        if emote_time >= current_emote_timer:
             emote_active = False
             emote_time = 0
+            current_emote_bmp = None
+            current_emote_timer = 0
+            emote_ended = True
             display.load_bmp_into_matrix(target_matrix, idle_bmp)
 
-    return emote_active, emote_time
+    return (
+        emote_active,
+        emote_time,
+        current_emote_bmp,
+        current_emote_timer,
+        emote_started,
+        emote_ended,
+    )
 
 
 while True:
@@ -156,9 +176,53 @@ while True:
         else:
             blink_time += 1
 
+    #Emote
+    # (
+    #     emote,
+    #     emote_time,
+    #     current_emote_bmp,
+    #     current_emote_timer,
+    #     down_started,
+    #     down_ended,
+    # ) = handle_emote(
+    #     button_pressed=not btn_down.value,
+    #     emote_active=emote,
+    #     emote_time=emote_time,
+    #     current_emote_bmp=current_emote_bmp,
+    #     current_emote_timer=current_emote_timer,
+    #     display=display,
+    #     target_matrix=eye_matrix,
+    #     active_bmp="/faces/sleep.bmp",
+    #     idle_bmp="/faces/eye.bmp",
+    #     timer_limit=EMOTE_TIMER+10,
+    #     verbose=VERBOSE,
+    # )
 
-    if SSD1306_ON:
-        oled.show_text("Test")
+    # (
+    #     emote,
+    #     emote_time,
+    #     current_emote_bmp,
+    #     current_emote_timer,
+    #     up_started,
+    #     up_ended,
+    # ) = handle_emote(
+    #     button_pressed=not btn_up.value,
+    #     emote_active=emote,
+    #     emote_time=emote_time,
+    #     current_emote_bmp=current_emote_bmp,
+    #     current_emote_timer=current_emote_timer,
+    #     display=display,
+    #     target_matrix=eye_matrix,
+    #     active_bmp="/faces/cross.bmp",
+    #     idle_bmp="/faces/eye.bmp",
+    #     timer_limit=EMOTE_TIMER,
+    #     verbose=VERBOSE,
+    # )
+
+    # if down_started or up_started:
+    #     boop = False
+    #     boop_count = 0
+    #     eye_closed = False
 
     # boop
     if not emote:
@@ -181,31 +245,8 @@ while True:
                     eye_closed = False
                     display.load_bmp_into_matrix(eye_matrix, "/faces/eye.bmp")
 
-
-    #Emote
-    emote, emote_time = handle_emote(
-        button_pressed=not btn_down.value,
-        emote_active=emote,
-        emote_time=emote_time,
-        display=display,
-        target_matrix=eye_matrix,
-        active_bmp="/faces/sleep.bmp",
-        idle_bmp="/faces/eye.bmp",
-        timer_limit=EMOTE_TIMER,
-        verbose=VERBOSE,
-    )
-
-    emote, emote_time = handle_emote(
-        button_pressed=not btn_up.value,
-        emote_active=emote,
-        emote_time=emote_time,
-        display=display,
-        target_matrix=eye_matrix,
-        active_bmp="/faces/cross.bmp",
-        idle_bmp="/faces/eye.bmp",
-        timer_limit=EMOTE_TIMER,
-        verbose=VERBOSE,
-    )
+    if SSD1306_ON:
+        oled.draw_status(boop=boop, emote=emote, emote_time=emote_time)
 
 
 

@@ -2,6 +2,7 @@ import board
 import busio
 from adafruit_apds9960.apds9960 import APDS9960
 import adafruit_ssd1306
+from adafruit_gfx.gfx import GFX
 
 I2C_SCL_PIN = board.A1
 I2C_SDA_PIN = board.A2
@@ -108,6 +109,7 @@ class OLEDDisplay:
             self.i2c,
             addr=address,
         )
+        self.gfx = self._create_gfx()
         self.clear()
 
     def scan(self):
@@ -124,6 +126,61 @@ class OLEDDisplay:
         if clear:
             self.display.fill(0)
 
+        self._draw_text(str(text), x, y)
+
+        self.display.show()
+
+    def draw_status(self, boop=False, emote=False, emote_time=0):
+        self.display.fill(0)
+        self.gfx.round_rect(0, 0, self.width, self.height, 6, 1)
+        self.gfx.hline(4, 14, self.width - 8, 1)
+
+        self._draw_text("STATUS", 34, 4)
+
+        self.gfx.circle(14, 28, 7, 1)
+        if boop:
+            self.gfx.fill_circle(14, 28, 4, 1)
+        self._draw_text("BOOP", 28, 24)
+        self._draw_text("ON" if boop else "OFF", 84, 24)
+
+        self.gfx.rect(6, 40, self.width - 12, 18, 1)
+        if emote:
+            self.gfx.fill_rect(8, 42, self.width - 16, 14, 1)
+            self._draw_text("EMOTE", 12, 46, color=0)
+        else:
+            self._draw_text("EMOTE", 12, 46)
+
+        self._draw_text(str(emote_time), 96, 46, color=0 if emote else 1)
+        self.display.show()
+
+    def _create_gfx(self):
+        return GFX(
+            self.width,
+            self.height,
+            pixel=self._pixel,
+            hline=self._hline,
+            vline=self._vline,
+            fill_rect=self._fill_rect,
+            text=self._draw_text,
+        )
+
+    def _pixel(self, x, y, color=1):
+        if 0 <= x < self.width and 0 <= y < self.height:
+            self.display.pixel(x, y, color)
+
+    def _hline(self, x, y, width, color=1):
+        for offset in range(width):
+            self._pixel(x + offset, y, color)
+
+    def _vline(self, x, y, height, color=1):
+        for offset in range(height):
+            self._pixel(x, y + offset, color)
+
+    def _fill_rect(self, x, y, width, height, color=1):
+        for row in range(height):
+            self._hline(x, y + row, width, color)
+
+    def _draw_text(self, text, x=0, y=0, color=1):
         cursor_x = x
         cursor_y = y
 
@@ -133,7 +190,7 @@ class OLEDDisplay:
                 cursor_y += 8
                 continue
 
-            self._draw_char(char, cursor_x, cursor_y)
+            self._draw_char(char, cursor_x, cursor_y, color=color)
             cursor_x += 6
 
             if cursor_x + 5 > self.width:
@@ -143,9 +200,7 @@ class OLEDDisplay:
             if cursor_y + 7 > self.height:
                 break
 
-        self.display.show()
-
-    def _draw_char(self, char, x, y):
+    def _draw_char(self, char, x, y, color=1):
         glyph = _FONT_5X7.get(char)
         if glyph is None:
             glyph = _FONT_5X7.get(char.upper(), _FONT_5X7["?"])
@@ -153,4 +208,4 @@ class OLEDDisplay:
         for column, bits in enumerate(glyph):
             for row in range(7):
                 if bits & (1 << row):
-                    self.display.pixel(x + column, y + row, 1)
+                    self._pixel(x + column, y + row, color)
