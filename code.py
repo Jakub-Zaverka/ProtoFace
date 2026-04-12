@@ -6,6 +6,7 @@ from I2C_sim import APDSSensor
 from I2C_sim import OLEDDisplay
 import board
 import digitalio
+from wifi_network import Wifi
 
 
 
@@ -13,12 +14,18 @@ ACCELEROMETER_ON = True
 MIC_ON = True
 APDS_ON = True
 SSD1306_ON = True
+WIFI_ON = True
 VERBOSE = False
 MIN_MOVEMENT = 0.5
 
 display = Display()
 if ACCELEROMETER_ON:
     accelerometer = Accelerometer()
+
+if WIFI_ON:
+    wifi = Wifi()
+    wifi.connect()
+    wifi.get_time_ntp()
 
 nose_matrix = display.create_matrix(
     name="nose",
