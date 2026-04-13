@@ -157,6 +157,18 @@ class Display:
 
         return best_index
 
+    def rgb565_to_rgb888(self, color):
+        """Convert one RGB565 pixel to a 24-bit RGB integer."""
+        r = (color >> 11) & 0x1F
+        g = (color >> 5) & 0x3F
+        b = color & 0x1F
+
+        r = (r * 255) // 31
+        g = (g * 255) // 63
+        b = (b * 255) // 31
+
+        return (r << 16) | (g << 8) | b
+
     def source_pixel_to_color(self, bitmap, pixel_shader, x, y):
         """Read one source pixel as an RGB integer."""
         pixel_value = bitmap[x, y]
@@ -165,6 +177,25 @@ class Display:
             return pixel_shader[pixel_value]
 
         return pixel_value
+
+    def load_gif_frame_into_matrix(self, matrix_group, bitmap, pixel_shader=None):
+        """Copy the current GIF frame into a matrix region."""
+        matrix_group["bitmap"].fill(0)
+
+        copy_width = min(bitmap.width, matrix_group["width"])
+        copy_height = min(bitmap.height, matrix_group["height"])
+
+        for y in range(copy_height):
+            for x in range(copy_width):
+                pixel_value = bitmap[x, y]
+
+                # gifio frames are RGB565 unless the GIF exposes a palette.
+                if pixel_shader is not None and isinstance(pixel_shader, displayio.Palette):
+                    color = pixel_shader[pixel_value]
+                else:
+                    color = self.rgb565_to_rgb888(pixel_value)
+
+                matrix_group["bitmap"][x, y] = self.color_to_palette_index(color)
 
     def load_bmp_into_matrix(self, matrix_group, source):
         """Load a BMP path or in-memory bitmap and remap it into the current palette."""

@@ -1,6 +1,8 @@
 """Emote assets and runtime logic for face regions shown on the matrix."""
 
+import gc
 import displayio
+import gifio
 
 FONT_5X7 = {
     "0": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
@@ -28,6 +30,12 @@ def create_region(name, matrix_group, idle_source=None, hidden_when_idle=False):
         "elapsed": 0,
         "current_source": None,
         "duration": 0,
+        # Keep animated-source state alive between main-loop ticks.
+        "player": None,
+        "is_gif": False,
+        "loop": False,
+        "frame_index": 0,
+        "frame_count": 0,
     }
 
 
@@ -49,18 +57,127 @@ def _get_source_name(source):
     return "custom"
 
 
+def _get_source_type(source):
+    """Return the logical source type used by the region loader."""
+    if isinstance(source, dict):
+        return source.get("type", "image")
+    return "image"
+
+
+def _clear_region_player(region):
+    """Release any GIF player currently attached to the region."""
+    player = region["player"]
+    if player is not None:
+        player.deinit()
+        region["player"] = None
+        gc.collect()
+
+    region["is_gif"] = False
+    region["loop"] = False
+    region["frame_index"] = 0
+    region["frame_count"] = 0
+
+
+def _load_source_into_region(display, region, source):
+    """Load a new source into the region and initialize animation state."""
+    region["matrix"]["tile"].hidden = False
+    source_type = _get_source_type(source)
+
+    _clear_region_player(region)
+
+    if source_type == "gif":
+        path = _get_source_content(source)
+        player = gifio.OnDiskGif(path)
+        player.next_frame()
+
+        display.load_gif_frame_into_matrix(
+            region["matrix"],
+            player.bitmap,
+            player.palette,
+        )
+
+        region["player"] = player
+        region["is_gif"] = True
+        region["loop"] = source.get("loop", False)
+        region["frame_index"] = 0
+        region["frame_count"] = player.frame_count
+        return
+
+    display.load_bmp_into_matrix(region["matrix"], _get_source_content(source))
+
+
+def _tick_gif_region(display, region):
+    """Advance an animated region by exactly one GIF frame."""
+    player = region["player"]
+    if player is None:
+        return False
+
+    if region["frame_count"] <= 1:
+        return region["loop"]
+
+    if region["frame_index"] + 1 >= region["frame_count"]:
+        if not region["loop"]:
+            return False
+
+        path = _get_source_content(region["current_source"])
+        player.deinit()
+
+        player = gifio.OnDiskGif(path)
+        player.next_frame()
+
+        region["player"] = player
+        region["frame_index"] = 0
+        region["frame_count"] = player.frame_count
+
+        display.load_gif_frame_into_matrix(
+            region["matrix"],
+            player.bitmap,
+            player.palette,
+        )
+        return True
+
+    player.next_frame()
+    region["frame_index"] += 1
+
+    display.load_gif_frame_into_matrix(
+        region["matrix"],
+        player.bitmap,
+        player.palette,
+    )
+    return True
+
+
+def _reset_region_to_idle(display, region):
+    """Stop the active source and restore the region idle image."""
+    _clear_region_player(region)
+
+    region["active"] = False
+    region["elapsed"] = 0
+    region["current_source"] = None
+    region["duration"] = 0
+    region["matrix"]["tile"].hidden = region["hidden_when_idle"]
+
+    if region["idle_source"] is not None:
+        display.load_bmp_into_matrix(
+            region["matrix"],
+            _get_source_content(region["idle_source"]),
+        )
+
+
 def update_emote(display, region, source=None, duration=0, verbose=False):
     """Advance one region and swap in a new source when requested."""
     emote_started = False
 
     if source is not None:
         if not region["active"] or region["current_source"] != source:
-            region["matrix"]["tile"].hidden = False
-            display.load_bmp_into_matrix(region["matrix"], _get_source_content(source))
+            _load_source_into_region(display, region, source)
             emote_started = True
             if verbose:
                 print("emote")
                 print(region["name"], _get_source_name(source))
+        elif region["is_gif"]:
+            if not _tick_gif_region(display, region):
+                _load_source_into_region(display, region, source)
 
         region["active"] = True
         region["elapsed"] = 0
@@ -70,18 +187,11 @@ def update_emote(display, region, source=None, duration=0, verbose=False):
     elif region["active"]:
         region["elapsed"] += 1
 
-        if region["elapsed"] >= region["duration"]:
-            region["active"] = False
-            region["elapsed"] = 0
-            region["current_source"] = None
-            region["duration"] = 0
-            region["matrix"]["tile"].hidden = region["hidden_when_idle"]
-
-            if region["idle_source"] is not None:
-                display.load_bmp_into_matrix(
-                    region["matrix"],
-                    _get_source_content(region["idle_source"]),
-                )
+        if region["is_gif"]:
+            if not _tick_gif_region(display, region):
+                _reset_region_to_idle(display, region)
+        elif region["elapsed"] >= region["duration"]:
+            _reset_region_to_idle(display, region)
 
     return region["active"], emote_started
 
@@ -94,8 +204,19 @@ def get_emote_name(region):
 def create_image_emote(path, name=None):
     """Wrap an image path in the emote source structure used by the controller."""
     return {
+        "type": "image",
         "name": name or path.split("/")[-1],
         "content": path,
+    }
+
+
+def create_gif_emote(path, name=None, loop=False):
+    """Wrap a GIF path in the emote source structure used by the controller."""
+    return {
+        "type": "gif",
+        "name": name or path.split("/")[-1],
+        "content": path,
+        "loop": loop,
     }
 
 
@@ -188,9 +309,12 @@ class FaceEmoteController:
         self.nose_idle_source = "/faces/nose.bmp"
         self.mouth_idle_emote = create_image_emote("/faces/mouth.bmp", "mouth")
         self.mouth_speak_emote = create_image_emote("/faces/mouth_speak.bmp", "speak")
+        self.eye_load_emote = create_gif_emote("/faces/giphy.gif", "load", loop=False)
         # Template: sem pridej novy asset pro emote.
         # self.eye_happy_emote = create_image_emote("/faces/eye_happy.bmp", "happy")
         # self.mouth_smile_emote = create_image_emote("/faces/mouth_smile.bmp", "smile")
+        # self.eye_blink_emote = create_gif_emote("/faces/eye_blink.gif", "blink", loop=False)
+
 
         self.eye_region = create_region("eye", eye_matrix, self.eye_idle_emote)
         self.nose_region = create_region("nose", nose_matrix, self.nose_idle_source)
@@ -253,8 +377,13 @@ class FaceEmoteController:
         # Kdyz nechces prepsat uz zvoleny eye emote, pridej:
         #   and requests["eye"]["source"] is None
 
+        # clock
+        # if button_up_pressed and not self.whole_region["active"] and device_clock is not None:
+        #     requests["whole"]["source"] = create_clock_emote(device_clock)
+        #     requests["whole"]["duration"] = self.emote_timer
+
         if button_up_pressed and not self.whole_region["active"] and device_clock is not None:
-            requests["whole"]["source"] = create_clock_emote(device_clock)
+            requests["whole"]["source"] = self.eye_load_emote
             requests["whole"]["duration"] = self.emote_timer
 
         # if button_down_pressed and not self.whole_region["active"]:
