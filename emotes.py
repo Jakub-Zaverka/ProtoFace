@@ -134,3 +134,194 @@ def create_clock_emote(device_clock):
         "name": "clock",
         "content": create_time_bitmap(device_clock),
     }
+
+
+class FaceEmoteController:
+    """Manage face-region emotes and their per-loop update rules."""
+
+    def __init__(
+        self,
+        display,
+        eye_matrix,
+        nose_matrix,
+        mouth_matrix,
+        whole_matrix,
+        *,
+        blink_time_set=10,
+        emote_timer=10,
+        boop_timer=5,
+        blink_emote_timer=None,
+        verbose=False,
+    ):
+        self.display = display
+        self.eye_matrix = eye_matrix
+        self.nose_matrix = nose_matrix
+        self.mouth_matrix = mouth_matrix
+        self.whole_matrix = whole_matrix
+        self.verbose = verbose
+
+        self.blink_time_set = blink_time_set
+        self.emote_timer = emote_timer
+        self.boop_timer = boop_timer
+        self.blink_emote_timer = (
+            blink_emote_timer
+            if blink_emote_timer is not None
+            else max(1, blink_time_set // 6)
+        )
+        self.blink_time = 0
+
+        self.eye_idle_emote = create_image_emote("/faces/eye.bmp", "eye")
+        self.eye_sleep_emote = create_image_emote("/faces/sleep.bmp", "sleep")
+        self.eye_blink_emote = create_image_emote("/faces/eye_blink.bmp", "blink")
+        self.eye_boop_emote = create_image_emote("/faces/eye_open.bmp", "boop")
+        self.nose_idle_source = "/faces/nose.bmp"
+        self.mouth_idle_emote = create_image_emote("/faces/mouth.bmp", "mouth")
+        self.mouth_speak_emote = create_image_emote("/faces/mouth_speak.bmp", "speak")
+        # Template: sem pridej novy asset pro emote.
+        # self.eye_happy_emote = create_image_emote("/faces/eye_happy.bmp", "happy")
+        # self.mouth_smile_emote = create_image_emote("/faces/mouth_smile.bmp", "smile")
+
+        self.eye_region = create_region("eye", eye_matrix, self.eye_idle_emote)
+        self.nose_region = create_region("nose", nose_matrix, self.nose_idle_source)
+        self.mouth_region = create_region("mouth", mouth_matrix, self.mouth_idle_emote)
+        self.whole_region = create_region("whole", whole_matrix, hidden_when_idle=True)
+
+        self.whole_matrix["tile"].hidden = True
+        self.display.load_bmp_into_matrix(
+            self.eye_matrix,
+            _get_source_content(self.eye_idle_emote),
+        )
+        self.display.load_bmp_into_matrix(
+            self.nose_matrix,
+            self.nose_idle_source,
+        )
+        self.display.load_bmp_into_matrix(
+            self.mouth_matrix,
+            _get_source_content(self.mouth_idle_emote),
+        )
+
+    def _set_face_hidden(self, hidden):
+        self.eye_matrix["tile"].hidden = hidden
+        self.nose_matrix["tile"].hidden = hidden
+        self.mouth_matrix["tile"].hidden = hidden
+
+    def _create_requests(self):
+        return {
+            "eye": {"source": None, "duration": 0},
+            "nose": {"source": None, "duration": 0},
+            "mouth": {"source": None, "duration": 0},
+            "whole": {"source": None, "duration": 0},
+        }
+
+    def update(
+        self,
+        *,
+        button_up_pressed=False,
+        button_down_pressed=False,
+        device_clock=None,
+        mic_value=None,
+        proximity_value=None,
+    ):
+        requests = self._create_requests()
+
+        # Template pro novy trigger:
+        # if podminka and not self.whole_region["active"]:
+        #     requests["eye"]["source"] = self.eye_happy_emote
+        #     requests["eye"]["duration"] = self.emote_timer
+        #
+        # Dostupne regiony:
+        #   requests["eye"]
+        #   requests["nose"]
+        #   requests["mouth"]
+        #   requests["whole"]
+        #
+        # Kdyz chces fullscreen emote, pouzij requests["whole"].
+        # Kdyz nechces prepsat uz zvoleny eye emote, pridej:
+        #   and requests["eye"]["source"] is None
+
+        if button_up_pressed and not self.whole_region["active"] and device_clock is not None:
+            requests["whole"]["source"] = create_clock_emote(device_clock)
+            requests["whole"]["duration"] = self.emote_timer
+
+        # if button_down_pressed and not self.whole_region["active"]:
+        #     requests["eye"]["source"] = self.eye_sleep_emote
+        #     requests["eye"]["duration"] = self.emote_timer + 10
+
+        if button_down_pressed and not self.whole_region["active"]:
+            requests["eye"]["source"] = self.eye_boop_emote
+            requests["eye"]["duration"] = self.emote_timer
+            requests["mouth"]["source"] = self.mouth_speak_emote
+            requests["mouth"]["duration"] = self.emote_timer
+
+        if mic_value is not None and not self.whole_region["active"]:
+            if mic_value > 5:
+                requests["mouth"]["source"] = self.mouth_speak_emote
+                requests["mouth"]["duration"] = 1
+                if self.verbose:
+                    print("speak")
+
+        if (
+            proximity_value is not None
+            and not self.whole_region["active"]
+            and requests["eye"]["source"] is None
+        ):
+            if proximity_value > 200:
+                requests["eye"]["source"] = self.eye_boop_emote
+                requests["eye"]["duration"] = self.boop_timer
+
+        if not self.whole_region["active"] and requests["eye"]["source"] is None:
+            if not self.eye_region["active"]:
+                self.blink_time += 1
+                if self.blink_time >= self.blink_time_set:
+                    requests["eye"]["source"] = self.eye_blink_emote
+                    requests["eye"]["duration"] = self.blink_emote_timer
+                    self.blink_time = 0
+            elif get_emote_name(self.eye_region) != "blink":
+                self.blink_time = 0
+
+        started = {}
+        for name, region in (
+            ("nose", self.nose_region),
+            ("mouth", self.mouth_region),
+            ("eye", self.eye_region),
+            ("whole", self.whole_region),
+        ):
+            _, started[name] = update_emote(
+                self.display,
+                region,
+                source=requests[name]["source"],
+                duration=requests[name]["duration"],
+                verbose=self.verbose,
+            )
+
+        self._set_face_hidden(self.whole_region["active"])
+
+        if any(started.values()) and get_emote_name(self.eye_region) != "blink":
+            self.blink_time = 0
+
+        return started
+
+    def any_active(self):
+        return any(
+            region["active"]
+            for region in (
+                self.eye_region,
+                self.nose_region,
+                self.mouth_region,
+                self.whole_region,
+            )
+        )
+
+    def get_status_region(self):
+        if self.whole_region["active"]:
+            return self.whole_region
+        if self.eye_region["active"]:
+            return self.eye_region
+        if self.nose_region["active"]:
+            return self.nose_region
+        if self.mouth_region["active"]:
+            return self.mouth_region
+        return self.eye_region
+
+    def is_boop_active(self):
+        return get_emote_name(self.eye_region) == "boop"
