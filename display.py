@@ -94,15 +94,21 @@ class Display:
 
     def update_matrix(self, matrix_group, matrix):
         """Copy a 2D list of pixels into an existing matrix region."""
-        if len(matrix) != matrix_group["height"]:
-            raise ValueError("Matrix height does not match the created bitmap.")
+        target_width = matrix_group["width"]
+        target_height = matrix_group["height"]
 
-        for y, row in enumerate(matrix):
-            if len(row) != matrix_group["width"]:
-                raise ValueError("Matrix width does not match the created bitmap.")
+        # Smazat starý obsah, aby po menším obrázku nezůstaly artefakty.
+        matrix_group["bitmap"].fill(0)
 
-            for x, value in enumerate(row):
-                matrix_group["bitmap"][x, y] = value
+        copy_height = min(len(matrix), target_height)
+
+        for y in range(copy_height):
+            row = matrix[y]
+            copy_width = min(len(row), target_width)
+
+            for x in range(copy_width):
+                matrix_group["bitmap"][x, y] = row[x]
+
 
     def set_pixel(self, matrix_group, x, y, value):
         """Set a single pixel inside a matrix region."""
