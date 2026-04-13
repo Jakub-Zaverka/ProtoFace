@@ -1,3 +1,5 @@
+"""Emote assets and runtime logic for face regions shown on the matrix."""
+
 import displayio
 
 FONT_5X7 = {
@@ -16,6 +18,7 @@ FONT_5X7 = {
 
 
 def create_region(name, matrix_group, idle_source=None, hidden_when_idle=False):
+    """Create bookkeeping state for one drawable face region."""
     return {
         "name": name,
         "matrix": matrix_group,
@@ -29,12 +32,14 @@ def create_region(name, matrix_group, idle_source=None, hidden_when_idle=False):
 
 
 def _get_source_content(source):
+    """Normalize a source object to raw bitmap content or a file path."""
     if isinstance(source, dict):
         return source["content"]
     return source
 
 
 def _get_source_name(source):
+    """Return a short human-readable name for a source payload."""
     if isinstance(source, dict):
         return source["name"]
     if isinstance(source, str):
@@ -45,6 +50,7 @@ def _get_source_name(source):
 
 
 def update_emote(display, region, source=None, duration=0, verbose=False):
+    """Advance one region and swap in a new source when requested."""
     emote_started = False
 
     if source is not None:
@@ -81,10 +87,12 @@ def update_emote(display, region, source=None, duration=0, verbose=False):
 
 
 def get_emote_name(region):
+    """Return the display name of the source currently active in a region."""
     return _get_source_name(region["current_source"])
 
 
 def create_image_emote(path, name=None):
+    """Wrap an image path in the emote source structure used by the controller."""
     return {
         "name": name or path.split("/")[-1],
         "content": path,
@@ -92,6 +100,7 @@ def create_image_emote(path, name=None):
 
 
 def _draw_char(bitmap, char, x, y, scale=2, color=1):
+    """Draw one scaled 5x7 glyph into a bitmap."""
     glyph = FONT_5X7[char]
     for row, row_bits in enumerate(glyph):
         for col, bit in enumerate(row_bits):
@@ -105,6 +114,7 @@ def _draw_char(bitmap, char, x, y, scale=2, color=1):
 
 
 def create_time_bitmap(device_clock):
+    """Render the current device time into a 64x32 bitmap."""
     text = device_clock.get_time()
 
     bitmap = displayio.Bitmap(64, 32, 2)
@@ -130,6 +140,7 @@ def create_time_bitmap(device_clock):
 
 
 def create_clock_emote(device_clock):
+    """Create a fullscreen emote source containing the current time."""
     return {
         "name": "clock",
         "content": create_time_bitmap(device_clock),
@@ -201,11 +212,13 @@ class FaceEmoteController:
         )
 
     def _set_face_hidden(self, hidden):
+        """Hide or show the three face-part regions together."""
         self.eye_matrix["tile"].hidden = hidden
         self.nose_matrix["tile"].hidden = hidden
         self.mouth_matrix["tile"].hidden = hidden
 
     def _create_requests(self):
+        """Build an empty per-region request map for the current frame."""
         return {
             "eye": {"source": None, "duration": 0},
             "nose": {"source": None, "duration": 0},
@@ -222,6 +235,7 @@ class FaceEmoteController:
         mic_value=None,
         proximity_value=None,
     ):
+        """Update region requests from inputs and advance all active emotes."""
         requests = self._create_requests()
 
         # Template pro novy trigger:
@@ -302,6 +316,7 @@ class FaceEmoteController:
         return started
 
     def any_active(self):
+        """Return True when any face region currently shows a timed emote."""
         return any(
             region["active"]
             for region in (
@@ -313,6 +328,7 @@ class FaceEmoteController:
         )
 
     def get_status_region(self):
+        """Return the highest-priority region for status reporting."""
         if self.whole_region["active"]:
             return self.whole_region
         if self.eye_region["active"]:
@@ -324,4 +340,5 @@ class FaceEmoteController:
         return self.eye_region
 
     def is_boop_active(self):
+        """Return True while the boop eye emote is currently active."""
         return get_emote_name(self.eye_region) == "boop"

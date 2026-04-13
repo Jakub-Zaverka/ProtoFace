@@ -1,3 +1,5 @@
+"""Helpers for creating regions on the RGB matrix and drawing BMP content."""
+
 import board
 import displayio
 import framebufferio
@@ -123,6 +125,7 @@ class Display:
         self.window.refresh()
 
     def matrix_to_list(self, matrix_group):
+        """Return a matrix region as a nested Python list of palette indices."""
         bitmap = matrix_group["bitmap"]
         width = matrix_group["width"]
         height = matrix_group["height"]

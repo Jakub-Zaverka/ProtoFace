@@ -1,3 +1,5 @@
+"""Main runtime loop wiring sensors, buttons, the display and emote control."""
+
 import time
 from display import Display
 from accelerometer import Accelerometer
