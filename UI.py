@@ -24,13 +24,14 @@ class UI():
         self.display = display
         self.main_menu_items = ["Emotes", "Settings", "Debug"]
         self.emotes_menu_items = ["gif", "clock", "cross", "open eye", "Back", "test1", "test2", "test3", "test4", "test5"]
-        self.settings_menu_items = ["Boop", "Mic", "Accelerometer","Wifi", "Verbose", "Back"]
+        self.settings_menu_items = ["Boop", "Mic", "Blink", "Accelerometer","Wifi", "Verbose", "Back"]
         self.setting_values = {
             "Boop": False,
             "Wifi": False,
             "Accelerometer": False,
             "Verbose": False,
-            "Mic":False
+            "Mic": False,
+            "Blink": False,
         }
         self.main_selected_index = 0
         self.emotes_selected_index = 0
@@ -254,7 +255,7 @@ class UI():
 
         for offset_index, item in enumerate(visible_items):
             index = scroll_offset + offset_index
-            prefix = "-" if index == selected_index else " "
+            prefix = ">" if index == selected_index else " "
             lines.append(f"{prefix} {item}")
 
         self.render_screen_text("\n".join(lines))

@@ -284,6 +284,7 @@ class FaceEmoteController:
         mouth_matrix,
         whole_matrix,
         *,
+        blink_enabled=True,
         blink_time_set=10,
         emote_timer=20,
         boop_timer=5,
@@ -297,6 +298,7 @@ class FaceEmoteController:
         self.whole_matrix = whole_matrix
         self.verbose = verbose
 
+        self.blink_enabled = blink_enabled
         self.blink_time_set = blink_time_set
         self.emote_timer = emote_timer
         self.boop_timer = boop_timer
@@ -451,7 +453,12 @@ class FaceEmoteController:
                 requests["eye"]["source"] = self.eye_boop_emote
                 requests["eye"]["duration"] = self.boop_timer
 
-        if not menu_emote_active and not self.whole_region["active"] and requests["eye"]["source"] is None:
+        if (
+            self.blink_enabled
+            and not menu_emote_active
+            and not self.whole_region["active"]
+            and requests["eye"]["source"] is None
+        ):
             if not self.eye_region["active"]:
                 self.blink_time += 1
                 if self.blink_time >= self.blink_time_set:

@@ -20,6 +20,7 @@ NVM_MAGIC = b"PFS1"
 SETTING_ENV_KEYS = {
     "Accelerometer": "ACCELEROMETER_ON",
     "Boop": "APDS_ON",
+    "Blink": "BLINK_ON",
     "Wifi": "WIFI_ON",
     "Verbose": "VERBOSE",
     "Mic": "MIC_ON",
@@ -30,6 +31,7 @@ SETTING_BITS = {
     "APDS_ON": 2,
     "WIFI_ON": 3,
     "VERBOSE": 4,
+    "BLINK_ON": 5,
 }
 
 MIN_MOVEMENT = 1
@@ -89,6 +91,7 @@ APDS_ON = read_bool_setting("APDS_ON", True)
 SSD1306_ON = read_bool_setting("SSD1306_ON", True)
 WIFI_ON = read_bool_setting("WIFI_ON", True)
 VERBOSE = read_bool_setting("VERBOSE", False)
+BLINK_ON = read_bool_setting("BLINK_ON", True)
 
 
 def persist_boolean_setting(key, value):
@@ -151,6 +154,7 @@ def toggle_setting(setting_name):
     global VERBOSE
     global MIC_ON
     global mic
+    global BLINK_ON
 
     if setting_name == "Accelerometer":
         ACCELEROMETER_ON = not ACCELEROMETER_ON
@@ -164,6 +168,11 @@ def toggle_setting(setting_name):
         if APDS_ON and apds is None:
             apds = APDSSensor()
         persist_runtime_setting(setting_name, APDS_ON)
+        return setting_name
+
+    if setting_name == "Blink":
+        BLINK_ON = not BLINK_ON
+        persist_runtime_setting(setting_name, BLINK_ON)
         return setting_name
 
     if setting_name == "Wifi":
@@ -210,6 +219,7 @@ def get_setting_values():
     """Return the current UI-visible values for toggleable settings."""
     return {
         "Boop": APDS_ON,
+        "Blink": BLINK_ON,
         "Wifi": WIFI_ON,
         "Accelerometer": ACCELEROMETER_ON,
         "Verbose": VERBOSE,
@@ -300,6 +310,7 @@ face_emotes = emotes.FaceEmoteController(
     nose_matrix,
     mouth_matrix,
     whole_matrix,
+    blink_enabled=BLINK_ON,
     blink_time_set=BLINK_TIME_SET,
     emote_timer=EMOTE_TIMER,
     boop_timer=BOOP_TIMER,
@@ -358,6 +369,8 @@ while True:
     new_setting = handle_ui_event(ui_event)
     if new_setting is not None:
         toggled_setting = new_setting
+        if toggled_setting == "Blink":
+            face_emotes.blink_enabled = BLINK_ON
 
     if ui is not None:
         sync_ui_settings(ui)
