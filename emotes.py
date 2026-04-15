@@ -356,19 +356,67 @@ class FaceEmoteController:
             "whole": {"source": None, "duration": 0},
         }
 
+    def _apply_active_menu_emote(self, requests, active_menu_emote, device_clock):
+        """Map the currently opened emote detail to persistent region requests."""
+        if active_menu_emote == "clock":
+            requests["whole"]["source"] = create_clock_emote(device_clock)
+            requests["whole"]["duration"] = 1
+            return True
+
+        if active_menu_emote == "gif":
+            requests["whole"]["source"] = self.eye_load_emote
+            requests["whole"]["duration"] = 1
+            return True
+
+        if active_menu_emote == "cross":
+            requests["eye"]["source"] = self.cross_emote
+            requests["eye"]["duration"] = 1
+            return True
+
+        if active_menu_emote == "open eye":
+            requests["eye"]["source"] = self.eye_boop_emote
+            requests["eye"]["duration"] = 1
+            requests["mouth"]["source"] = self.mouth_speak_emote
+            requests["mouth"]["duration"] = 1
+            return True
+
+        return False
+
     def update(
         self,
         *,
-        button_up_pressed=False,
-        clock_requested=False,
-        cross_requested=False,
-        button_down_pressed=False,
+        active_menu_emote=None,
         device_clock=None,
         mic_value=None,
         proximity_value=None,
     ):
         """Update region requests from inputs and advance all active emotes."""
         requests = self._create_requests()
+        menu_emote_active = self._apply_active_menu_emote(
+            requests,
+            active_menu_emote,
+            device_clock,
+        )
+
+        if menu_emote_active:
+            started = {}
+            for name, region in (
+                ("nose", self.nose_region),
+                ("mouth", self.mouth_region),
+                ("eye", self.eye_region),
+                ("whole", self.whole_region),
+            ):
+                _, started[name] = update_emote(
+                    self.display,
+                    region,
+                    source=requests[name]["source"],
+                    duration=requests[name]["duration"],
+                    verbose=self.verbose,
+                )
+
+            self._set_face_hidden(self.whole_region["active"])
+            self.blink_time = 0
+            return started
 
         # Template pro novy trigger:
         # if podminka and not self.whole_region["active"]:
@@ -385,29 +433,7 @@ class FaceEmoteController:
         # Kdyz nechces prepsat uz zvoleny eye emote, pridej:
         #   and requests["eye"]["source"] is None
 
-        if clock_requested and not self.whole_region["active"]:
-            requests["whole"]["source"] = create_clock_emote(device_clock)
-            requests["whole"]["duration"] = self.emote_timer
-
-        if button_up_pressed and not self.whole_region["active"]:
-            requests["whole"]["source"] = self.eye_load_emote
-            requests["whole"]["duration"] = self.emote_timer
-
-        if cross_requested and not self.whole_region["active"]:
-            requests["eye"]["source"] = self.cross_emote
-            requests["eye"]["duration"] = self.emote_timer
-
-        # if button_down_pressed and not self.whole_region["active"]:
-        #     requests["eye"]["source"] = self.eye_sleep_emote
-        #     requests["eye"]["duration"] = self.emote_timer + 10
-
-        if button_down_pressed and not self.whole_region["active"]:
-            requests["eye"]["source"] = self.eye_boop_emote
-            requests["eye"]["duration"] = self.emote_timer
-            requests["mouth"]["source"] = self.mouth_speak_emote
-            requests["mouth"]["duration"] = self.emote_timer
-
-        if mic_value is not None and not self.whole_region["active"]:
+        if not menu_emote_active and mic_value is not None and not self.whole_region["active"]:
             if mic_value > 5:
                 requests["mouth"]["source"] = self.mouth_speak_emote
                 requests["mouth"]["duration"] = 1
@@ -415,6 +441,8 @@ class FaceEmoteController:
                     print("speak")
 
         if (
+            not menu_emote_active
+            and
             proximity_value is not None
             and not self.whole_region["active"]
             and requests["eye"]["source"] is None
@@ -423,7 +451,7 @@ class FaceEmoteController:
                 requests["eye"]["source"] = self.eye_boop_emote
                 requests["eye"]["duration"] = self.boop_timer
 
-        if not self.whole_region["active"] and requests["eye"]["source"] is None:
+        if not menu_emote_active and not self.whole_region["active"] and requests["eye"]["source"] is None:
             if not self.eye_region["active"]:
                 self.blink_time += 1
                 if self.blink_time >= self.blink_time_set:

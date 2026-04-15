@@ -12,7 +12,6 @@ LINE_HEIGHT = 8
 CHAR_WIDTH = 6
 CLOCK_PADDING = 2
 
-EVENT_EMOTE_SELECTED = "emote_selected"
 EVENT_SETTING_SELECTED = "setting_selected"
 
 
@@ -75,7 +74,6 @@ class UI():
                     self.selected_emote = selected_item
                     self.active_screen = SCREEN_EMOTE_DETAIL
                     self.needs_render = True
-                    return EVENT_EMOTE_SELECTED, self.selected_emote
                 self.needs_render = True
             return None
 
@@ -115,6 +113,12 @@ class UI():
         if self.clock_text != value:
             self.clock_text = value
             self.needs_render = True
+
+    def get_active_menu_emote(self):
+        """Return the currently opened emote detail or None outside that screen."""
+        if self.active_screen == SCREEN_EMOTE_DETAIL:
+            return self.selected_emote
+        return None
 
     def render_ui(self):
         """Render the current menu or selected screen onto the OLED."""
