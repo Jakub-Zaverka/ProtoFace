@@ -1,6 +1,6 @@
 """Main runtime loop wiring sensors, buttons, the display and emote control."""
 
-import json
+import microcontroller
 import os
 import time
 from display import Display
@@ -17,13 +17,20 @@ from UI import EVENT_EMOTE_SELECTED
 from UI import EVENT_SETTING_SELECTED
 from UI import UI
 
-RUNTIME_SETTINGS_PATH = "runtime_settings.json"
+NVM_MAGIC = b"PFS1"
 SETTING_ENV_KEYS = {
     "Accelerometer": "ACCELEROMETER_ON",
     "Boop": "APDS_ON",
     "Wifi": "WIFI_ON",
     "Verbose": "VERBOSE",
     "Mic": "MIC_ON",
+}
+SETTING_BITS = {
+    "ACCELEROMETER_ON": 0,
+    "MIC_ON": 1,
+    "APDS_ON": 2,
+    "WIFI_ON": 3,
+    "VERBOSE": 4,
 }
 
 MIN_MOVEMENT = 1
@@ -37,14 +44,19 @@ oled = None
 
 
 def load_runtime_settings():
-    """Load persisted UI settings from the runtime JSON file."""
-    try:
-        with open(RUNTIME_SETTINGS_PATH, "r") as settings_file:
-            return json.loads(settings_file.read())
-    except OSError:
+    """Load persisted UI settings from microcontroller NVM."""
+    if len(microcontroller.nvm) < len(NVM_MAGIC) + 1:
         return {}
-    except ValueError:
+
+    raw = bytes(microcontroller.nvm[: len(NVM_MAGIC) + 1])
+    if raw[: len(NVM_MAGIC)] != NVM_MAGIC:
         return {}
+
+    flags = raw[len(NVM_MAGIC)]
+    runtime_settings = {}
+    for setting_key, bit_index in SETTING_BITS.items():
+        runtime_settings[setting_key] = bool(flags & (1 << bit_index))
+    return runtime_settings
 
 
 def read_bool_setting(name, default):
@@ -81,15 +93,23 @@ VERBOSE = read_bool_setting("VERBOSE", False)
 
 
 def persist_boolean_setting(key, value):
-    """Store one boolean setting in the runtime JSON file."""
+    """Store one boolean setting in microcontroller NVM."""
+    if len(microcontroller.nvm) < len(NVM_MAGIC) + 1:
+        if VERBOSE:
+            print("microcontroller.nvm is too small for runtime settings")
+        return False
+
     RUNTIME_SETTINGS[key] = value
+    flags = 0
+    for setting_key, bit_index in SETTING_BITS.items():
+        if RUNTIME_SETTINGS.get(setting_key, False):
+            flags |= 1 << bit_index
 
     try:
-        with open(RUNTIME_SETTINGS_PATH, "w") as settings_file:
-            settings_file.write(json.dumps(RUNTIME_SETTINGS))
-    except OSError as error:
+        microcontroller.nvm[: len(NVM_MAGIC) + 1] = NVM_MAGIC + bytes([flags])
+    except (OSError, ValueError) as error:
         if VERBOSE:
-            print(f"Failed to write {RUNTIME_SETTINGS_PATH}: {error}")
+            print(f"Failed to write runtime settings to NVM: {error}")
         return False
 
     return True
