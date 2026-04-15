@@ -19,6 +19,7 @@ FONT_5X7 = {
     ":": ("00000", "00100", "00100", "00000", "00100", "00100", "00000"),
 }
 
+BLINKING_SLOWER = 25
 
 def create_region(name, matrix_group, idle_source=None, hidden_when_idle=False):
     """Create bookkeeping state for one drawable face region."""
@@ -471,7 +472,7 @@ class FaceEmoteController:
         ):
             if not self.eye_region["active"]:
                 self.blink_time += 1
-                if self.blink_time >= self.blink_time_set:
+                if self.blink_time >= self.blink_time_set + BLINKING_SLOWER:
                     requests["eye"]["source"] = self.eye_blink_emote
                     requests["eye"]["duration"] = self.blink_emote_timer
                     self.blink_time = 0
