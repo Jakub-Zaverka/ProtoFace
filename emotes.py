@@ -319,6 +319,7 @@ class FaceEmoteController:
         self.mouth_speak_emote = create_image_emote("/faces/mouth_speak.bmp", "speak")
         self.eye_load_emote = create_gif_emote("/faces/giphy.gif", "load", loop=False)
         self.cross_emote = create_image_emote("/faces/cross.bmp", "cross")
+        self.whole_dice_roll = create_gif_emote("/faces/dice.gif", "dice", loop=False)
         # Template: sem pridej novy asset pro emote.
         # self.eye_happy_emote = create_image_emote("/faces/eye_happy.bmp", "happy")
         # self.mouth_smile_emote = create_image_emote("/faces/mouth_smile.bmp", "smile")
@@ -365,15 +366,20 @@ class FaceEmoteController:
             return False
 
         active_menu_emote = str(active_menu_emote).strip().lower()
-
+        
         if active_menu_emote == "clock":
             requests["whole"]["source"] = create_clock_emote(device_clock)
             requests["whole"]["duration"] = 1
             return True
 
         if active_menu_emote == "gif":
-            requests["eye"]["source"] = self.eye_load_emote
-            requests["eye"]["duration"] = 1
+            requests["whole"]["source"] = self.eye_load_emote
+            requests["whole"]["duration"] = 1
+            return True
+        
+        if active_menu_emote == "dice":
+            requests["whole"]["source"] = self.whole_dice_roll
+            requests["whole"]["duration"] = 1
             return True
 
         if active_menu_emote == "cross":
@@ -430,21 +436,6 @@ class FaceEmoteController:
             self._set_face_hidden(self.whole_region["active"])
             self.blink_time = 0
             return started
-
-        # Template pro novy trigger:
-        # if podminka and not self.whole_region["active"]:
-        #     requests["eye"]["source"] = self.eye_happy_emote
-        #     requests["eye"]["duration"] = self.emote_timer
-        #
-        # Dostupne regiony:
-        #   requests["eye"]
-        #   requests["nose"]
-        #   requests["mouth"]
-        #   requests["whole"]
-        #
-        # Kdyz chces fullscreen emote, pouzij requests["whole"].
-        # Kdyz nechces prepsat uz zvoleny eye emote, pridej:
-        #   and requests["eye"]["source"] is None
 
         if not menu_emote_active and mic_value is not None and not self.whole_region["active"]:
             if mic_value > 5:
