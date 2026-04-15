@@ -128,17 +128,29 @@ def persist_runtime_setting(setting_name, value):
 def handle_ui_event(event):
     """Translate one UI event into app actions for the current loop."""
     request_load_emote = False
+    request_clock_emote = False
+    request_cross_emote = False
     request_open_eye_emote = False
     toggled_setting = None
 
     if event is None:
-        return request_load_emote, request_open_eye_emote, toggled_setting
+        return (
+            request_load_emote,
+            request_clock_emote,
+            request_cross_emote,
+            request_open_eye_emote,
+            toggled_setting,
+        )
 
     event_type, value = event
 
     if event_type == EVENT_EMOTE_SELECTED:
         if value == "gif":
             request_load_emote = True
+        elif value == "clock":
+            request_clock_emote = True
+        elif value == "cross":
+            request_cross_emote = True
         elif value == "open eye":
             request_open_eye_emote = True
         elif VERBOSE:
@@ -147,7 +159,13 @@ def handle_ui_event(event):
     elif event_type == EVENT_SETTING_SELECTED:
         toggled_setting = toggle_setting(value)
 
-    return request_load_emote, request_open_eye_emote, toggled_setting
+    return (
+        request_load_emote,
+        request_clock_emote,
+        request_cross_emote,
+        request_open_eye_emote,
+        toggled_setting,
+    )
 
 
 def toggle_setting(setting_name):
@@ -364,7 +382,13 @@ while True:
         ui.set_clock_text(get_clock_text())
         ui_event = ui.handle_input(confirm_click=up_click, next_click=down_click)
 
-    request_load_emote, request_open_eye_emote, new_setting = handle_ui_event(ui_event)
+    (
+        request_load_emote,
+        request_clock_emote,
+        request_cross_emote,
+        request_open_eye_emote,
+        new_setting,
+    ) = handle_ui_event(ui_event)
     if new_setting is not None:
         toggled_setting = new_setting
 
@@ -374,6 +398,8 @@ while True:
 
     face_emotes.update(
         button_up_pressed=request_load_emote,
+        clock_requested=request_clock_emote,
+        cross_requested=request_cross_emote,
         button_down_pressed=request_open_eye_emote,
         device_clock=device_clock if WIFI_ON else None,
         mic_value=mic_value,

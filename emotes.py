@@ -3,6 +3,7 @@
 import gc
 import displayio
 import gifio
+import time
 
 FONT_5X7 = {
     "0": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
@@ -234,9 +235,13 @@ def _draw_char(bitmap, char, x, y, scale=2, color=1):
                             bitmap[px, py] = color
 
 
-def create_time_bitmap(device_clock):
+def create_time_bitmap(device_clock=None):
     """Render the current device time into a 64x32 bitmap."""
-    text = device_clock.get_time()
+    if device_clock is not None:
+        text = device_clock.get_time()
+    else:
+        now = time.localtime()
+        text = "{:02}:{:02}".format(now.tm_hour, now.tm_min)
 
     bitmap = displayio.Bitmap(64, 32, 2)
     palette = displayio.Palette(2)
@@ -280,7 +285,7 @@ class FaceEmoteController:
         whole_matrix,
         *,
         blink_time_set=10,
-        emote_timer=10,
+        emote_timer=20,
         boop_timer=5,
         blink_emote_timer=None,
         verbose=False,
@@ -310,6 +315,7 @@ class FaceEmoteController:
         self.mouth_idle_emote = create_image_emote("/faces/mouth.bmp", "mouth")
         self.mouth_speak_emote = create_image_emote("/faces/mouth_speak.bmp", "speak")
         self.eye_load_emote = create_gif_emote("/faces/giphy.gif", "load", loop=False)
+        self.cross_emote = create_image_emote("/faces/cross.bmp", "cross")
         # Template: sem pridej novy asset pro emote.
         # self.eye_happy_emote = create_image_emote("/faces/eye_happy.bmp", "happy")
         # self.mouth_smile_emote = create_image_emote("/faces/mouth_smile.bmp", "smile")
@@ -354,6 +360,8 @@ class FaceEmoteController:
         self,
         *,
         button_up_pressed=False,
+        clock_requested=False,
+        cross_requested=False,
         button_down_pressed=False,
         device_clock=None,
         mic_value=None,
@@ -377,14 +385,17 @@ class FaceEmoteController:
         # Kdyz nechces prepsat uz zvoleny eye emote, pridej:
         #   and requests["eye"]["source"] is None
 
-        # clock
-        # if button_up_pressed and not self.whole_region["active"] and device_clock is not None:
-        #     requests["whole"]["source"] = create_clock_emote(device_clock)
-        #     requests["whole"]["duration"] = self.emote_timer
+        if clock_requested and not self.whole_region["active"]:
+            requests["whole"]["source"] = create_clock_emote(device_clock)
+            requests["whole"]["duration"] = self.emote_timer
 
-        if button_up_pressed and not self.whole_region["active"] and device_clock is not None:
+        if button_up_pressed and not self.whole_region["active"]:
             requests["whole"]["source"] = self.eye_load_emote
             requests["whole"]["duration"] = self.emote_timer
+
+        if cross_requested and not self.whole_region["active"]:
+            requests["eye"]["source"] = self.cross_emote
+            requests["eye"]["duration"] = self.emote_timer
 
         # if button_down_pressed and not self.whole_region["active"]:
         #     requests["eye"]["source"] = self.eye_sleep_emote

@@ -23,7 +23,7 @@ class UI():
         """Initialize menu structure, selection state and render flags."""
         self.display = display
         self.main_menu_items = ["Emotes", "Settings", "Debug"]
-        self.emotes_menu_items = ["gif", "cross", "open eye", "Back"]
+        self.emotes_menu_items = ["gif", "clock", "cross", "open eye", "Back"]
         self.settings_menu_items = ["Boop", "Mic", "Accelerometer","Wifi", "Verbose", "Back"]
         self.setting_values = {
             "Boop": False,
