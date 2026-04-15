@@ -11,6 +11,7 @@ CLOCK_Y = 0
 LINE_HEIGHT = 8
 CHAR_WIDTH = 6
 CLOCK_PADDING = 2
+MAX_VISIBLE_LIST_ROWS = 6
 
 EVENT_SETTING_SELECTED = "setting_selected"
 
@@ -22,7 +23,7 @@ class UI():
         """Initialize menu structure, selection state and render flags."""
         self.display = display
         self.main_menu_items = ["Emotes", "Settings", "Debug"]
-        self.emotes_menu_items = ["gif", "clock", "cross", "open eye", "Back"]
+        self.emotes_menu_items = ["gif", "clock", "cross", "open eye", "Back", "test1", "test2", "test3", "test4", "test5"]
         self.settings_menu_items = ["Boop", "Mic", "Accelerometer","Wifi", "Verbose", "Back"]
         self.setting_values = {
             "Boop": False,
@@ -34,6 +35,9 @@ class UI():
         self.main_selected_index = 0
         self.emotes_selected_index = 0
         self.settings_selected_index = 0
+        self.main_scroll_offset = 0
+        self.emotes_scroll_offset = 0
+        self.settings_scroll_offset = 0
         self.active_screen = SCREEN_MAIN_MENU
         self.selected_emote = None
         self.clock_text = "--:--"
@@ -46,6 +50,11 @@ class UI():
                 self.main_selected_index = (
                     self.main_selected_index + 1
                 ) % len(self.main_menu_items)
+                self.main_scroll_offset = self.get_follow_scroll_offset(
+                    self.main_selected_index,
+                    self.main_scroll_offset,
+                    len(self.main_menu_items),
+                )
                 self.needs_render = True
 
             if confirm_click:
@@ -64,6 +73,11 @@ class UI():
                 self.emotes_selected_index = (
                     self.emotes_selected_index + 1
                 ) % len(self.emotes_menu_items)
+                self.emotes_scroll_offset = self.get_follow_scroll_offset(
+                    self.emotes_selected_index,
+                    self.emotes_scroll_offset,
+                    len(self.emotes_menu_items),
+                )
                 self.needs_render = True
 
             if confirm_click:
@@ -82,6 +96,11 @@ class UI():
                 self.settings_selected_index = (
                     self.settings_selected_index + 1
                 ) % len(self.settings_menu_items)
+                self.settings_scroll_offset = self.get_follow_scroll_offset(
+                    self.settings_selected_index,
+                    self.settings_scroll_offset,
+                    len(self.settings_menu_items),
+                )
                 self.needs_render = True
 
             if confirm_click:
@@ -120,6 +139,46 @@ class UI():
             return self.selected_emote
         return None
 
+    def get_follow_scroll_offset(self, selected_index, current_offset, item_count):
+        """Keep the selected row inside the visible list window."""
+        if item_count <= MAX_VISIBLE_LIST_ROWS:
+            return 0
+
+        if selected_index == 0:
+            return 0
+
+        if selected_index == item_count - 1:
+            return max(0, item_count - MAX_VISIBLE_LIST_ROWS)
+
+        if selected_index < current_offset:
+            return selected_index
+
+        if selected_index >= current_offset + MAX_VISIBLE_LIST_ROWS:
+            return selected_index - MAX_VISIBLE_LIST_ROWS + 1
+
+        return current_offset
+
+    def get_visible_items(self, items, selected_index, scroll_offset):
+        """Return the current visible list window and its effective offset."""
+        if len(items) <= MAX_VISIBLE_LIST_ROWS:
+            return items, 0
+
+        scroll_offset = min(
+            scroll_offset,
+            max(0, len(items) - MAX_VISIBLE_LIST_ROWS),
+        )
+        visible_items = items[scroll_offset:scroll_offset + MAX_VISIBLE_LIST_ROWS]
+
+        if selected_index < scroll_offset or selected_index >= scroll_offset + len(visible_items):
+            scroll_offset = self.get_follow_scroll_offset(
+                selected_index,
+                scroll_offset,
+                len(items),
+            )
+            visible_items = items[scroll_offset:scroll_offset + MAX_VISIBLE_LIST_ROWS]
+
+        return visible_items, scroll_offset
+
     def render_ui(self):
         """Render the current menu or selected screen onto the OLED."""
         if not self.needs_render:
@@ -140,10 +199,11 @@ class UI():
 
     def render_menu(self):
         """Render the top-level navigation menu."""
-        self.render_selectable_list(
+        self.main_scroll_offset = self.render_selectable_list(
             title="Menu",
             items=self.main_menu_items,
             selected_index=self.main_selected_index,
+            scroll_offset=self.main_scroll_offset,
         )
 
     def render_main(self):
@@ -153,8 +213,14 @@ class UI():
     def render_settings(self):
         """Render the settings submenu."""
         lines = ["Settings"]
+        visible_items, self.settings_scroll_offset = self.get_visible_items(
+            self.settings_menu_items,
+            self.settings_selected_index,
+            self.settings_scroll_offset,
+        )
 
-        for index, item in enumerate(self.settings_menu_items):
+        for offset_index, item in enumerate(visible_items):
+            index = self.settings_scroll_offset + offset_index
             prefix = ">" if index == self.settings_selected_index else " "
             if item == "Back":
                 lines.append(f"{prefix} {item}")
@@ -166,25 +232,33 @@ class UI():
 
     def render_emotes(self):
         """Render the emotes submenu."""
-        self.render_selectable_list(
+        self.emotes_scroll_offset = self.render_selectable_list(
             title="Emotes",
             items=self.emotes_menu_items,
             selected_index=self.emotes_selected_index,
+            scroll_offset=self.emotes_scroll_offset,
         )
 
     def render_emote_detail(self):
         """Render the currently selected emote detail screen."""
         self.render_screen_text(f"Emote:\n{self.selected_emote}\nDOWN=BACK")
 
-    def render_selectable_list(self, title, items, selected_index):
+    def render_selectable_list(self, title, items, selected_index, scroll_offset=0):
         """Render a simple selectable list with the current cursor highlighted."""
         lines = [title]
+        visible_items, scroll_offset = self.get_visible_items(
+            items,
+            selected_index,
+            scroll_offset,
+        )
 
-        for index, item in enumerate(items):
+        for offset_index, item in enumerate(visible_items):
+            index = scroll_offset + offset_index
             prefix = "-" if index == selected_index else " "
             lines.append(f"{prefix} {item}")
 
         self.render_screen_text("\n".join(lines))
+        return scroll_offset
 
     def render_screen_text(self, text):
         """Render one OLED screen with a top-right clock and body content."""
