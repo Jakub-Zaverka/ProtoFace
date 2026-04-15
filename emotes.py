@@ -360,18 +360,28 @@ class FaceEmoteController:
 
     def _apply_active_menu_emote(self, requests, active_menu_emote, device_clock):
         """Map the currently opened emote detail to persistent region requests."""
+        if active_menu_emote is None:
+            return False
+
+        active_menu_emote = str(active_menu_emote).strip().lower()
+
         if active_menu_emote == "clock":
             requests["whole"]["source"] = create_clock_emote(device_clock)
             requests["whole"]["duration"] = 1
             return True
 
         if active_menu_emote == "gif":
-            requests["whole"]["source"] = self.eye_load_emote
-            requests["whole"]["duration"] = 1
+            requests["eye"]["source"] = self.eye_load_emote
+            requests["eye"]["duration"] = 1
             return True
 
         if active_menu_emote == "cross":
             requests["eye"]["source"] = self.cross_emote
+            requests["eye"]["duration"] = 1
+            return True
+        
+        if active_menu_emote == "sleep":
+            requests["eye"]["source"] = self.eye_sleep_emote
             requests["eye"]["duration"] = 1
             return True
 
