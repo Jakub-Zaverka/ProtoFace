@@ -24,6 +24,7 @@ SETTING_ENV_KEYS = {
     "Wifi": "WIFI_ON",
     "Verbose": "VERBOSE",
     "Mic": "MIC_ON",
+    "Display": "DISPLAY_ON"
 }
 SETTING_BITS = {
     "ACCELEROMETER_ON": 0,
@@ -32,6 +33,7 @@ SETTING_BITS = {
     "WIFI_ON": 3,
     "VERBOSE": 4,
     "BLINK_ON": 5,
+    "DISPLAY_ON":6
 }
 
 MIN_MOVEMENT = 1
@@ -42,6 +44,7 @@ apds = None
 wifi = None
 device_clock = None
 oled = None
+display = None
 
 
 def load_runtime_settings():
@@ -92,6 +95,8 @@ SSD1306_ON = read_bool_setting("SSD1306_ON", True)
 WIFI_ON = read_bool_setting("WIFI_ON", True)
 VERBOSE = read_bool_setting("VERBOSE", False)
 BLINK_ON = read_bool_setting("BLINK_ON", True)
+#DISPLAY_ON = read_bool_setting("DISPLAY_ON", True)
+DISPLAY_ON = True
 
 
 def persist_boolean_setting(key, value):
@@ -155,6 +160,8 @@ def toggle_setting(setting_name):
     global MIC_ON
     global mic
     global BLINK_ON
+    global DISPLAY_ON
+    global display
 
     if setting_name == "Accelerometer":
         ACCELEROMETER_ON = not ACCELEROMETER_ON
@@ -209,6 +216,13 @@ def toggle_setting(setting_name):
             mic = Microphone()
         persist_runtime_setting(setting_name, MIC_ON)
         return setting_name
+    
+    if setting_name == "Screen":
+        DISPLAY_ON = not DISPLAY_ON
+        if DISPLAY_ON and display is None:
+            display = Display()
+        persist_runtime_setting(setting_name, MIC_ON)
+        return setting_name
 
     if VERBOSE:
         print(f"Unknown setting: {setting_name}")
@@ -241,7 +255,7 @@ def sync_ui_settings(ui):
     for setting_name, setting_value in get_setting_values().items():
         ui.set_setting_value(setting_name, setting_value)
 
-display = Display()
+
 if ACCELEROMETER_ON:
     accelerometer = Accelerometer()
 
@@ -251,37 +265,39 @@ if WIFI_ON:
     device_clock = Clock(wifi)
     device_clock.sync_ntp()
 
-nose_matrix = display.create_matrix(
-    name="nose",
-    position_x=0,
-    position_y=0,
-    matrix_width=32,
-    matrix_height=16,
-)
+if DISPLAY_ON:
+    display = Display()
+    nose_matrix = display.create_matrix(
+        name="nose",
+        position_x=0,
+        position_y=0,
+        matrix_width=32,
+        matrix_height=16,
+    )
 
-eye_matrix = display.create_matrix(
-    name="eye",
-    position_x=31,
-    position_y=0,
-    matrix_width=32,
-    matrix_height=16,
-)
+    eye_matrix = display.create_matrix(
+        name="eye",
+        position_x=31,
+        position_y=0,
+        matrix_width=32,
+        matrix_height=16,
+    )
 
-mouth_matrix = display.create_matrix(
-    name="mouth",
-    position_x=0,
-    position_y=16,
-    matrix_width=64,
-    matrix_height=16,
-)
+    mouth_matrix = display.create_matrix(
+        name="mouth",
+        position_x=0,
+        position_y=16,
+        matrix_width=64,
+        matrix_height=16,
+    )
 
-whole_matrix = display.create_matrix(
-    name="whole",
-    position_x=0,
-    position_y=0,
-    matrix_width=64,
-    matrix_height=32,
-)
+    whole_matrix = display.create_matrix(
+        name="whole",
+        position_x=0,
+        position_y=0,
+        matrix_width=64,
+        matrix_height=32,
+    )
 
 
 if MIC_ON:
@@ -304,20 +320,21 @@ btn_up = digitalio.DigitalInOut(board.BUTTON_UP)
 btn_down.switch_to_input(pull=digitalio.Pull.UP)
 btn_up.switch_to_input(pull=digitalio.Pull.UP)
 
-face_emotes = emotes.FaceEmoteController(
-    display,
-    eye_matrix,
-    nose_matrix,
-    mouth_matrix,
-    whole_matrix,
-    blink_enabled=BLINK_ON,
-    blink_time_set=BLINK_TIME_SET,
-    emote_timer=EMOTE_TIMER,
-    boop_timer=BOOP_TIMER,
-    verbose=VERBOSE,
-)
+if DISPLAY_ON:
+    face_emotes = emotes.FaceEmoteController(
+        display,
+        eye_matrix,
+        nose_matrix,
+        mouth_matrix,
+        whole_matrix,
+        blink_enabled=BLINK_ON,
+        blink_time_set=BLINK_TIME_SET,
+        emote_timer=EMOTE_TIMER,
+        boop_timer=BOOP_TIMER,
+        verbose=VERBOSE,
+    )
 
-display.refresh()
+    display.refresh()
 
 ui = UI(oled) if SSD1306_ON else None
 prev_up_pressed = False
@@ -376,12 +393,13 @@ while True:
         sync_ui_settings(ui)
         ui.render_ui()
 
-    face_emotes.update(
-        active_menu_emote=active_menu_emote,
-        device_clock=device_clock if WIFI_ON else None,
-        mic_value=mic_value,
-        proximity_value=proximity_value,
-    )
+    if DISPLAY_ON:
+        face_emotes.update(
+            active_menu_emote=active_menu_emote,
+            device_clock=device_clock if WIFI_ON else None,
+            mic_value=mic_value,
+            proximity_value=proximity_value,
+        )
 
 
     # debug print
@@ -403,7 +421,8 @@ while True:
         print("----")
     
     
-    display.refresh()
+    if DISPLAY_ON:
+        display.refresh()
     prev_up_pressed = up_pressed
     prev_down_pressed = down_pressed
     time.sleep(0.1)

@@ -24,7 +24,7 @@ class UI():
         self.display = display
         self.main_menu_items = ["Emotes", "Settings",]
         self.emotes_menu_items = ["Gif", "Clock", "Cross", "Open eye", "Sleep", "Back", "test2", "test3", "test4", "test5"]
-        self.settings_menu_items = ["Boop", "Mic", "Blink", "Accelerometer","Wifi", "Verbose", "Back"]
+        self.settings_menu_items = ["Display","Boop", "Mic", "Blink", "Accelerometer","Wifi", "Verbose", "Back"]
         self.setting_values = {
             "Boop": False,
             "Wifi": False,
@@ -32,6 +32,7 @@ class UI():
             "Verbose": False,
             "Mic": False,
             "Blink": False,
+            "Screen":False
         }
         self.main_selected_index = 0
         self.emotes_selected_index = 0
