@@ -1,3 +1,5 @@
+"""Shared I2C helpers for the APDS9960 sensor and SSD1306 OLED."""
+
 import board
 import busio
 from adafruit_apds9960.apds9960 import APDS9960
@@ -136,6 +138,19 @@ class OLEDDisplay:
             self.display.fill(0)
 
         self._draw_text(str(text), x, y)
+
+        self.display.show()
+
+    def show_text_blocks(self, blocks, clear=True):
+        """Draw multiple text blocks and flush the OLED only once."""
+        if clear:
+            self.display.fill(0)
+
+        for block in blocks:
+            text = block.get("text", "")
+            x = block.get("x", 0)
+            y = block.get("y", 0)
+            self._draw_text(str(text), x, y)
 
         self.display.show()
 

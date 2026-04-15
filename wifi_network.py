@@ -1,3 +1,5 @@
+"""Simple Wi-Fi connection helper for the device runtime."""
+
 import os
 
 import socketpool
@@ -5,7 +7,10 @@ import wifi
 
 
 class Wifi:
+    """Store Wi-Fi credentials and open a shared socket pool."""
+
     def __init__(self, ssid=os.getenv("HOME_WIFI_SSID"), passw=os.getenv("HOME_WIFI_PASSWORD")):
+        """Load Wi-Fi credentials from arguments or environment variables."""
         self.wifi_ssid = ssid
         self.wifi_password = passw
         self.pool = None
@@ -15,6 +20,7 @@ class Wifi:
             raise ValueError("SSID not found in environment variables")
 
     def connect(self):
+        """Connect the radio and create a socket pool for network clients."""
         try:
             wifi.radio.connect(self.wifi_ssid, self.wifi_password)
         except ConnectionError:

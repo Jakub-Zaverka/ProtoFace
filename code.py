@@ -1,5 +1,7 @@
 """Main runtime loop wiring sensors, buttons, the display and emote control."""
 
+import json
+import os
 import time
 from display import Display
 from accelerometer import Accelerometer
@@ -11,16 +13,214 @@ import digitalio
 from wifi_network import Wifi
 from clock import Clock
 import emotes
+from UI import EVENT_EMOTE_SELECTED
+from UI import EVENT_SETTING_SELECTED
+from UI import UI
 
+RUNTIME_SETTINGS_PATH = "runtime_settings.json"
+SETTING_ENV_KEYS = {
+    "Accelerometer": "ACCELEROMETER_ON",
+    "Boop": "APDS_ON",
+    "Wifi": "WIFI_ON",
+    "Verbose": "VERBOSE",
+    "Mic": "MIC_ON",
+}
 
-
-ACCELEROMETER_ON = True
-MIC_ON = True
-APDS_ON = True
-SSD1306_ON = True
-WIFI_ON = True
-VERBOSE = False
 MIN_MOVEMENT = 1
+
+accelerometer = None
+mic = None
+apds = None
+wifi = None
+device_clock = None
+oled = None
+
+
+def load_runtime_settings():
+    """Load persisted UI settings from the runtime JSON file."""
+    try:
+        with open(RUNTIME_SETTINGS_PATH, "r") as settings_file:
+            return json.loads(settings_file.read())
+    except OSError:
+        return {}
+    except ValueError:
+        return {}
+
+
+def read_bool_setting(name, default):
+    """Read one boolean setting from runtime JSON, env config or fallback."""
+    value = RUNTIME_SETTINGS.get(name)
+    if value is not None:
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() == "true"
+
+    try:
+        value = os.getenv(name)
+    except (ValueError, TypeError):
+        return default
+
+    if value is None:
+        return default
+
+    if isinstance(value, bool):
+        return value
+
+    return str(value).strip().lower() == "true"
+
+
+RUNTIME_SETTINGS = load_runtime_settings()
+
+
+ACCELEROMETER_ON = read_bool_setting("ACCELEROMETER_ON", True)
+MIC_ON = read_bool_setting("MIC_ON", True)
+APDS_ON = read_bool_setting("APDS_ON", True)
+SSD1306_ON = read_bool_setting("SSD1306_ON", True)
+WIFI_ON = read_bool_setting("WIFI_ON", True)
+VERBOSE = read_bool_setting("VERBOSE", False)
+
+
+def persist_boolean_setting(key, value):
+    """Store one boolean setting in the runtime JSON file."""
+    RUNTIME_SETTINGS[key] = value
+
+    try:
+        with open(RUNTIME_SETTINGS_PATH, "w") as settings_file:
+            settings_file.write(json.dumps(RUNTIME_SETTINGS))
+    except OSError as error:
+        if VERBOSE:
+            print(f"Failed to write {RUNTIME_SETTINGS_PATH}: {error}")
+        return False
+
+    return True
+
+
+def persist_runtime_setting(setting_name, value):
+    """Map one UI setting name to its persisted runtime key and store it."""
+    key = SETTING_ENV_KEYS.get(setting_name)
+    if key is None:
+        if VERBOSE:
+            print(f"No runtime mapping for: {setting_name}")
+        return False
+    return persist_boolean_setting(key, value)
+
+
+def handle_ui_event(event):
+    """Translate one UI event into app actions for the current loop."""
+    request_load_emote = False
+    request_open_eye_emote = False
+    toggled_setting = None
+
+    if event is None:
+        return request_load_emote, request_open_eye_emote, toggled_setting
+
+    event_type, value = event
+
+    if event_type == EVENT_EMOTE_SELECTED:
+        if value == "gif":
+            request_load_emote = True
+        elif value == "open eye":
+            request_open_eye_emote = True
+        elif VERBOSE:
+            print(f"No emote action mapped for: {value}")
+
+    elif event_type == EVENT_SETTING_SELECTED:
+        toggled_setting = toggle_setting(value)
+
+    return request_load_emote, request_open_eye_emote, toggled_setting
+
+
+def toggle_setting(setting_name):
+    """Toggle one runtime setting and initialize hardware when needed."""
+    global ACCELEROMETER_ON
+    global APDS_ON
+    global WIFI_ON
+    global accelerometer
+    global apds
+    global wifi
+    global device_clock
+    global VERBOSE
+    global MIC_ON
+    global mic
+
+    if setting_name == "Accelerometer":
+        ACCELEROMETER_ON = not ACCELEROMETER_ON
+        if ACCELEROMETER_ON and accelerometer is None:
+            accelerometer = Accelerometer()
+        persist_runtime_setting(setting_name, ACCELEROMETER_ON)
+        return setting_name
+
+    if setting_name == "Boop":
+        APDS_ON = not APDS_ON
+        if APDS_ON and apds is None:
+            apds = APDSSensor()
+        persist_runtime_setting(setting_name, APDS_ON)
+        return setting_name
+
+    if setting_name == "Wifi":
+        if WIFI_ON:
+            WIFI_ON = False
+            persist_runtime_setting(setting_name, WIFI_ON)
+            return setting_name
+
+        try:
+            if wifi is None:
+                wifi = Wifi()
+            wifi.connect()
+
+            if device_clock is None:
+                device_clock = Clock(wifi)
+            device_clock.sync_ntp()
+            WIFI_ON = True
+            persist_runtime_setting(setting_name, WIFI_ON)
+            return setting_name
+        except Exception as error:
+            WIFI_ON = False
+            if VERBOSE:
+                print(f"Failed to enable Wifi: {error}")
+            return None
+    
+    if setting_name == "Verbose":
+        VERBOSE = not VERBOSE
+        persist_runtime_setting(setting_name, VERBOSE)
+        return setting_name
+    
+    if setting_name == "Mic":
+        MIC_ON = not MIC_ON
+        if MIC_ON and mic is None:
+            mic = Microphone()
+        persist_runtime_setting(setting_name, MIC_ON)
+        return setting_name
+
+    if VERBOSE:
+        print(f"Unknown setting: {setting_name}")
+    return None
+
+
+def get_setting_values():
+    """Return the current UI-visible values for toggleable settings."""
+    return {
+        "Boop": APDS_ON,
+        "Wifi": WIFI_ON,
+        "Accelerometer": ACCELEROMETER_ON,
+        "Verbose": VERBOSE,
+        "Mic": MIC_ON
+    }
+
+
+def get_clock_text():
+    """Return a clock string from RTC/localtime even without Wi-Fi sync."""
+    if device_clock is not None:
+        return device_clock.get_time()
+
+    now = time.localtime()
+    return "{:02}:{:02}".format(now.tm_hour, now.tm_min)
+
+
+def sync_ui_settings(ui):
+    """Push current runtime setting values into the rendered UI."""
+    for setting_name, setting_value in get_setting_values().items():
+        ui.set_setting_value(setting_name, setting_value)
 
 display = Display()
 if ACCELEROMETER_ON:
@@ -99,10 +299,20 @@ face_emotes = emotes.FaceEmoteController(
 
 display.refresh()
 
+ui = UI(oled) if SSD1306_ON else None
+prev_up_pressed = False
+prev_down_pressed = False
+toggled_setting = None
+
 while True:
+    toggled_setting = None
     movement = accelerometer.derivation() if ACCELEROMETER_ON else None
     mic_value = mic.get_value() if MIC_ON else None
     proximity_value = apds.get_value() if APDS_ON else None
+    up_pressed = not btn_up.value
+    down_pressed = not btn_down.value
+    up_click = up_pressed and not prev_up_pressed
+    down_click = down_pressed and not prev_down_pressed
     
     #if movement
     if ACCELEROMETER_ON and not face_emotes.whole_region["active"]:
@@ -128,27 +338,27 @@ while True:
             whole_matrix["tile"].x = 0
             whole_matrix["tile"].y = 0
     
+    ui_event = None
+    if ui is not None:
+        sync_ui_settings(ui)
+        ui.set_clock_text(get_clock_text())
+        ui_event = ui.handle_input(confirm_click=up_click, next_click=down_click)
+
+    request_load_emote, request_open_eye_emote, new_setting = handle_ui_event(ui_event)
+    if new_setting is not None:
+        toggled_setting = new_setting
+
+    if ui is not None:
+        sync_ui_settings(ui)
+        ui.render_ui()
+
     face_emotes.update(
-        button_up_pressed=not btn_up.value,
-        button_down_pressed=not btn_down.value,
+        button_up_pressed=request_load_emote,
+        button_down_pressed=request_open_eye_emote,
         device_clock=device_clock if WIFI_ON else None,
         mic_value=mic_value,
         proximity_value=proximity_value,
     )
-
-
-
-    #OLED screen
-    if SSD1306_ON:
-        status_region = face_emotes.get_status_region()
-        oled.draw_status(
-            boop=face_emotes.is_boop_active(),
-            emote=face_emotes.any_active(),
-            emote_time=status_region["elapsed"],
-            emote_name=emotes.get_emote_name(status_region),
-            current_time=device_clock.get_time() if WIFI_ON else "--:--",
-        )
-
 
 
     # debug print
@@ -164,8 +374,13 @@ while True:
             #print(apds.get_color())
             print(f"APDS: {proximity_value}")
 
+        if toggled_setting is not None:
+            print(f"UI setting: {toggled_setting}")
+
         print("----")
     
     
     display.refresh()
+    prev_up_pressed = up_pressed
+    prev_down_pressed = down_pressed
     time.sleep(0.1)

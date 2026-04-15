@@ -1,3 +1,5 @@
+"""Helpers for reading and calibrating the onboard accelerometer."""
+
 import board
 import adafruit_lis3dh
 import time
@@ -8,8 +10,12 @@ sensor.range = adafruit_lis3dh.RANGE_2_G
 
 SAMPLE_SIZE = 20
 
+
 class Accelerometer:
+    """Read acceleration values and expose movement relative to calibration."""
+
     def __init__(self):
+        """Initialize state and capture the initial sensor baseline."""
         self.axis = [0, 0, 0]
         self.x = 0
         self.y = 0
@@ -21,16 +27,19 @@ class Accelerometer:
         self.__get_messurements__()
     
     def print_axis(self):
+        """Print the latest raw axis values for quick debugging."""
         self.__get_messurements__()
         print(self.x, self.y, self.z)
 
     def __get_messurements__(self):
+        """Refresh the cached raw acceleration values from the sensor."""
         self.axis = sensor.acceleration
         self.x = self.axis[0]
         self.y = self.axis[1]
         self.z = self.axis[2]
 
     def __calibrate__(self):
+        """Average several samples to establish the resting baseline."""
         # kalibrace senzoru
         suma_x = suma_y = suma_z = 0
         for _ in range(SAMPLE_SIZE):
@@ -48,6 +57,7 @@ class Accelerometer:
         self.avg_z = suma_z/SAMPLE_SIZE
 
     def derivation(self):
+        """Return rounded acceleration deltas from the calibrated baseline."""
         self.__get_messurements__()
         derivation_x = self.x - self.avg_x
         derivation_y = self.y - self.avg_y

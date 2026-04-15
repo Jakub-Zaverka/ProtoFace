@@ -1,9 +1,11 @@
+"""RTC and NTP time helpers used by the device runtime."""
+
 import time
 import rtc
 
 import adafruit_ntp
 
-DEBUG_DISABLE_SYNC = True
+DEBUG_DISABLE_SYNC = False
 
 
 class _FallbackNTP:
@@ -14,6 +16,8 @@ class _FallbackNTP:
 
 
 class Clock:
+    """Synchronize the RTC from NTP and expose formatted device time."""
+
     def __init__(
         self,
         wifi_client,
@@ -22,6 +26,7 @@ class Clock:
         tz_offset=2,
         cache_seconds=3600,
     ):
+        """Store NTP settings and prepare fallback sync behavior."""
         self.wifi = wifi_client
         self.server = server
         self.tz_offset = tz_offset
@@ -31,6 +36,7 @@ class Clock:
         self._fallback_ntp = _FallbackNTP()
 
     def sync_ntp(self):
+        """Synchronize the RTC using NTP or the fallback source."""
         ntp_source = self._fallback_ntp
 
         if not DEBUG_DISABLE_SYNC and self.wifi.pool is not None:
@@ -51,15 +57,18 @@ class Clock:
         return rtc.RTC().datetime
 
     def resync(self):
+        """Force a fresh RTC synchronization on the next call."""
         self._synced = False
         return self.sync_ntp()
 
     def get_datetime(self):
+        """Return the current RTC datetime, syncing first if needed."""
         if not self._synced:
             return self.sync_ntp()
         return rtc.RTC().datetime
 
     def get_time(self):
+        """Return the current local time formatted as HH:MM."""
         self.get_datetime()
         now = time.localtime()
         return "{:02}:{:02}".format(now.tm_hour, now.tm_min)
