@@ -368,8 +368,10 @@ EMOTE_TIMER = 10
 
 btn_down = digitalio.DigitalInOut(board.BUTTON_DOWN)
 btn_up = digitalio.DigitalInOut(board.BUTTON_UP)
+btn_prev = digitalio.DigitalInOut(board.A1)
 btn_down.switch_to_input(pull=digitalio.Pull.UP)
 btn_up.switch_to_input(pull=digitalio.Pull.UP)
+btn_prev.switch_to_input(pull=digitalio.Pull.UP)
 
 if DISPLAY_ON:
     initialize_display_stack()
@@ -377,6 +379,7 @@ if DISPLAY_ON:
 ui = UI(oled) if SSD1306_ON else None
 prev_up_pressed = False
 prev_down_pressed = False
+prev_prev_pressed = False
 toggled_setting = None
 
 while True:
@@ -386,8 +389,10 @@ while True:
     proximity_value = apds.get_value() if APDS_ON else None
     up_pressed = not btn_up.value
     down_pressed = not btn_down.value
+    prev_pressed = not btn_prev.value
     up_click = up_pressed and not prev_up_pressed
     down_click = down_pressed and not prev_down_pressed
+    prev_click = prev_pressed and not prev_prev_pressed
     
     #if movement
     if (
@@ -422,7 +427,11 @@ while True:
     if ui is not None:
         sync_ui_settings(ui)
         ui.set_clock_text(get_clock_text())
-        ui_event = ui.handle_input(confirm_click=up_click, next_click=down_click)
+        ui_event = ui.handle_input(
+            confirm_click=up_click,
+            next_click=down_click,
+            prev_click=prev_click,
+        )
         active_menu_emote = ui.get_active_menu_emote()
 
     new_setting = handle_ui_event(ui_event)
@@ -467,4 +476,5 @@ while True:
         display.refresh()
     prev_up_pressed = up_pressed
     prev_down_pressed = down_pressed
+    prev_prev_pressed = prev_pressed
     time.sleep(0.1)

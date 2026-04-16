@@ -45,9 +45,20 @@ class UI():
         self.clock_text = "--:--"
         self.needs_render = True
 
-    def handle_input(self, confirm_click, next_click):
+    def handle_input(self, confirm_click, next_click, prev_click=False):
         """Update menu state from button clicks and return optional events."""
         if self.active_screen == SCREEN_MAIN_MENU:
+            if prev_click:
+                self.main_selected_index = (
+                    self.main_selected_index - 1
+                ) % len(self.main_menu_items)
+                self.main_scroll_offset = self.get_follow_scroll_offset(
+                    self.main_selected_index,
+                    self.main_scroll_offset,
+                    len(self.main_menu_items),
+                )
+                self.needs_render = True
+
             if next_click:
                 self.main_selected_index = (
                     self.main_selected_index + 1
@@ -71,6 +82,17 @@ class UI():
             return None
 
         if self.active_screen == SCREEN_EMOTES_MENU:
+            if prev_click:
+                self.emotes_selected_index = (
+                    self.emotes_selected_index - 1
+                ) % len(self.emotes_menu_items)
+                self.emotes_scroll_offset = self.get_follow_scroll_offset(
+                    self.emotes_selected_index,
+                    self.emotes_scroll_offset,
+                    len(self.emotes_menu_items),
+                )
+                self.needs_render = True
+
             if next_click:
                 self.emotes_selected_index = (
                     self.emotes_selected_index + 1
@@ -94,6 +116,17 @@ class UI():
             return None
 
         if self.active_screen == SCREEN_SETTINGS_MENU:
+            if prev_click:
+                self.settings_selected_index = (
+                    self.settings_selected_index - 1
+                ) % len(self.settings_menu_items)
+                self.settings_scroll_offset = self.get_follow_scroll_offset(
+                    self.settings_selected_index,
+                    self.settings_scroll_offset,
+                    len(self.settings_menu_items),
+                )
+                self.needs_render = True
+
             if next_click:
                 self.settings_selected_index = (
                     self.settings_selected_index + 1
@@ -115,7 +148,7 @@ class UI():
                 self.needs_render = True
             return None
 
-        if next_click:
+        if next_click or prev_click:
             if self.active_screen == SCREEN_MAIN_SCREEN:
                 self.active_screen = SCREEN_MAIN_MENU
             elif self.active_screen == SCREEN_EMOTE_DETAIL:
@@ -210,7 +243,7 @@ class UI():
 
     def render_main(self):
         """Render the placeholder main screen content."""
-        self.render_screen_text("Main\nDOWN=BACK")
+        self.render_screen_text("Main\nPREV/NEXT=BACK")
 
     def render_settings(self):
         """Render the settings submenu."""
@@ -243,7 +276,7 @@ class UI():
 
     def render_emote_detail(self):
         """Render the currently selected emote detail screen."""
-        self.render_screen_text(f"Emote:\n{self.selected_emote}\nDOWN=BACK")
+        self.render_screen_text(f"Emote:\n{self.selected_emote}\nPREV/NEXT=BACK")
 
     def render_selectable_list(self, title, items, selected_index, scroll_offset=0):
         """Render a simple selectable list with the current cursor highlighted."""
