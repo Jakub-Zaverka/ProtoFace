@@ -519,3 +519,13 @@ class FaceEmoteController:
     def is_boop_active(self):
         """Return True while the boop eye emote is currently active."""
         return get_emote_name(self.eye_region) == "boop"
+
+    def shutdown(self):
+        """Release active animation players before the display is torn down."""
+        for region in (
+            self.eye_region,
+            self.nose_region,
+            self.mouth_region,
+            self.whole_region,
+        ):
+            _clear_region_player(region)

@@ -124,6 +124,19 @@ class Display:
         """Push pending bitmap changes to the display."""
         self.window.refresh()
 
+    def deinit(self):
+        """Release the RGB matrix display so it can be recreated later."""
+        if getattr(self, "window", None) is not None:
+            try:
+                self.window.root_group = None
+            except AttributeError:
+                pass
+
+        self.matrix_groups = []
+        self.group = None
+        self.window = None
+        displayio.release_displays()
+
     def matrix_to_list(self, matrix_group):
         """Return a matrix region as a nested Python list of palette indices."""
         bitmap = matrix_group["bitmap"]

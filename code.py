@@ -45,6 +45,11 @@ wifi = None
 device_clock = None
 oled = None
 display = None
+face_emotes = None
+nose_matrix = None
+eye_matrix = None
+mouth_matrix = None
+whole_matrix = None
 
 
 def load_runtime_settings():
@@ -95,8 +100,7 @@ SSD1306_ON = read_bool_setting("SSD1306_ON", True)
 WIFI_ON = read_bool_setting("WIFI_ON", True)
 VERBOSE = read_bool_setting("VERBOSE", False)
 BLINK_ON = read_bool_setting("BLINK_ON", True)
-#DISPLAY_ON = read_bool_setting("DISPLAY_ON", True)
-DISPLAY_ON = True
+DISPLAY_ON = read_bool_setting("DISPLAY_ON", True)
 
 
 def persist_boolean_setting(key, value):
@@ -132,6 +136,81 @@ def persist_runtime_setting(setting_name, value):
     return persist_boolean_setting(key, value)
 
 
+def initialize_display_stack():
+    """Create the HUB75 display, face regions and controller."""
+    global display
+    global face_emotes
+    global nose_matrix
+    global eye_matrix
+    global mouth_matrix
+    global whole_matrix
+
+    display = Display()
+    nose_matrix = display.create_matrix(
+        name="nose",
+        position_x=0,
+        position_y=0,
+        matrix_width=32,
+        matrix_height=16,
+    )
+    eye_matrix = display.create_matrix(
+        name="eye",
+        position_x=31,
+        position_y=0,
+        matrix_width=32,
+        matrix_height=16,
+    )
+    mouth_matrix = display.create_matrix(
+        name="mouth",
+        position_x=0,
+        position_y=16,
+        matrix_width=64,
+        matrix_height=16,
+    )
+    whole_matrix = display.create_matrix(
+        name="whole",
+        position_x=0,
+        position_y=0,
+        matrix_width=64,
+        matrix_height=32,
+    )
+    face_emotes = emotes.FaceEmoteController(
+        display,
+        eye_matrix,
+        nose_matrix,
+        mouth_matrix,
+        whole_matrix,
+        blink_enabled=BLINK_ON,
+        blink_time_set=BLINK_TIME_SET,
+        emote_timer=EMOTE_TIMER,
+        boop_timer=BOOP_TIMER,
+        verbose=VERBOSE,
+    )
+    display.refresh()
+
+
+def shutdown_display_stack():
+    """Release the HUB75 display and all objects bound to it."""
+    global display
+    global face_emotes
+    global nose_matrix
+    global eye_matrix
+    global mouth_matrix
+    global whole_matrix
+
+    if face_emotes is not None:
+        face_emotes.shutdown()
+    face_emotes = None
+
+    if display is not None:
+        display.deinit()
+    display = None
+    nose_matrix = None
+    eye_matrix = None
+    mouth_matrix = None
+    whole_matrix = None
+
+
 def handle_ui_event(event):
     """Translate one UI event into app actions for the current loop."""
     toggled_setting = None
@@ -162,6 +241,7 @@ def toggle_setting(setting_name):
     global BLINK_ON
     global DISPLAY_ON
     global display
+    global face_emotes
 
     if setting_name == "Accelerometer":
         ACCELEROMETER_ON = not ACCELEROMETER_ON
@@ -207,6 +287,8 @@ def toggle_setting(setting_name):
     
     if setting_name == "Verbose":
         VERBOSE = not VERBOSE
+        if face_emotes is not None:
+            face_emotes.verbose = VERBOSE
         persist_runtime_setting(setting_name, VERBOSE)
         return setting_name
     
@@ -217,11 +299,14 @@ def toggle_setting(setting_name):
         persist_runtime_setting(setting_name, MIC_ON)
         return setting_name
     
-    if setting_name == "Screen":
+    if setting_name == "Display":
         DISPLAY_ON = not DISPLAY_ON
-        if DISPLAY_ON and display is None:
-            display = Display()
-        persist_runtime_setting(setting_name, MIC_ON)
+        if DISPLAY_ON:
+            if display is None:
+                initialize_display_stack()
+        else:
+            shutdown_display_stack()
+        persist_runtime_setting(setting_name, DISPLAY_ON)
         return setting_name
 
     if VERBOSE:
@@ -232,6 +317,7 @@ def toggle_setting(setting_name):
 def get_setting_values():
     """Return the current UI-visible values for toggleable settings."""
     return {
+        "Display": DISPLAY_ON,
         "Boop": APDS_ON,
         "Blink": BLINK_ON,
         "Wifi": WIFI_ON,
@@ -265,41 +351,6 @@ if WIFI_ON:
     device_clock = Clock(wifi)
     device_clock.sync_ntp()
 
-if DISPLAY_ON:
-    display = Display()
-    nose_matrix = display.create_matrix(
-        name="nose",
-        position_x=0,
-        position_y=0,
-        matrix_width=32,
-        matrix_height=16,
-    )
-
-    eye_matrix = display.create_matrix(
-        name="eye",
-        position_x=31,
-        position_y=0,
-        matrix_width=32,
-        matrix_height=16,
-    )
-
-    mouth_matrix = display.create_matrix(
-        name="mouth",
-        position_x=0,
-        position_y=16,
-        matrix_width=64,
-        matrix_height=16,
-    )
-
-    whole_matrix = display.create_matrix(
-        name="whole",
-        position_x=0,
-        position_y=0,
-        matrix_width=64,
-        matrix_height=32,
-    )
-
-
 if MIC_ON:
     mic = Microphone()
 
@@ -321,20 +372,7 @@ btn_down.switch_to_input(pull=digitalio.Pull.UP)
 btn_up.switch_to_input(pull=digitalio.Pull.UP)
 
 if DISPLAY_ON:
-    face_emotes = emotes.FaceEmoteController(
-        display,
-        eye_matrix,
-        nose_matrix,
-        mouth_matrix,
-        whole_matrix,
-        blink_enabled=BLINK_ON,
-        blink_time_set=BLINK_TIME_SET,
-        emote_timer=EMOTE_TIMER,
-        boop_timer=BOOP_TIMER,
-        verbose=VERBOSE,
-    )
-
-    display.refresh()
+    initialize_display_stack()
 
 ui = UI(oled) if SSD1306_ON else None
 prev_up_pressed = False
@@ -352,7 +390,11 @@ while True:
     down_click = down_pressed and not prev_down_pressed
     
     #if movement
-    if ACCELEROMETER_ON and not face_emotes.whole_region["active"]:
+    if (
+        ACCELEROMETER_ON
+        and face_emotes is not None
+        and not face_emotes.whole_region["active"]
+    ):
         if abs(movement[0]) > MIN_MOVEMENT or abs(movement[1]) > MIN_MOVEMENT or abs(movement[2]) > MIN_MOVEMENT:
             if VERBOSE:
                 print("move")
@@ -386,14 +428,14 @@ while True:
     new_setting = handle_ui_event(ui_event)
     if new_setting is not None:
         toggled_setting = new_setting
-        if toggled_setting == "Blink":
+        if toggled_setting == "Blink" and face_emotes is not None:
             face_emotes.blink_enabled = BLINK_ON
 
     if ui is not None:
         sync_ui_settings(ui)
         ui.render_ui()
 
-    if DISPLAY_ON:
+    if face_emotes is not None:
         face_emotes.update(
             active_menu_emote=active_menu_emote,
             device_clock=device_clock if WIFI_ON else None,
@@ -421,7 +463,7 @@ while True:
         print("----")
     
     
-    if DISPLAY_ON:
+    if display is not None:
         display.refresh()
     prev_up_pressed = up_pressed
     prev_down_pressed = down_pressed

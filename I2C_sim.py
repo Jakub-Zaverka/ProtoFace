@@ -1,12 +1,9 @@
 """Shared I2C helpers for the APDS9960 sensor and SSD1306 OLED."""
 
 import board
-import busio
 from adafruit_apds9960.apds9960 import APDS9960
 import adafruit_ssd1306
 
-I2C_SCL_PIN = board.A1
-I2C_SDA_PIN = board.A2
 OLED_WIDTH = 128
 OLED_HEIGHT = 64
 OLED_ADDRESS = 0x3C
@@ -64,11 +61,14 @@ _FONT_5X7 = {
 
 
 def get_i2c():
-    """Return a shared I2C bus instance for all onboard I2C devices."""
+    """Return a shared hardware I2C bus instance for JST-SH/STEMMA devices."""
     global _shared_i2c
 
     if _shared_i2c is None:
-        _shared_i2c = busio.I2C(I2C_SCL_PIN, I2C_SDA_PIN)
+        if hasattr(board, "STEMMA_I2C"):
+            _shared_i2c = board.STEMMA_I2C()
+        else:
+            _shared_i2c = board.I2C()
 
     return _shared_i2c
 
@@ -80,9 +80,10 @@ def scan_i2c():
     while not i2c.try_lock():
         pass
 
-    addresses = [hex(address) for address in i2c.scan()]
-    i2c.unlock()
-    return addresses
+    try:
+        return [hex(address) for address in i2c.scan()]
+    finally:
+        i2c.unlock()
 
 
 class APDSSensor:
