@@ -393,7 +393,7 @@ EMOTE_TIMER = 10
 
 btn_down = digitalio.DigitalInOut(board.BUTTON_DOWN)
 btn_up = digitalio.DigitalInOut(board.BUTTON_UP)
-btn_prev = digitalio.DigitalInOut(board.A1)
+btn_prev = digitalio.DigitalInOut(board.A4)
 btn_down.switch_to_input(pull=digitalio.Pull.UP)
 btn_up.switch_to_input(pull=digitalio.Pull.UP)
 btn_prev.switch_to_input(pull=digitalio.Pull.UP)
@@ -452,6 +452,11 @@ while True:
     if ui is not None:
         sync_ui_settings(ui)
         ui.set_clock_text(get_clock_text())
+        ui.set_debug_lines([
+            f"Acc: {movement[0]}{movement[1]}",
+            f"Mic: {mic_value}",
+            f"APDS: {proximity_value}",
+        ])
         ui_event = ui.handle_input(
             confirm_click=up_click,
             next_click=down_click,
@@ -506,7 +511,7 @@ while True:
             print("------")
             print(f"{get_clock_text()}{iteration_logs}")
 
-
+    print(btn_prev.value)
     
     if display is not None:
         display.refresh()

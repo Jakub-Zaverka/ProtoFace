@@ -7,6 +7,7 @@ SCREEN_MAIN_SCREEN = "main_screen"
 SCREEN_EMOTES_MENU = "emotes_menu"
 SCREEN_EMOTE_DETAIL = "emote_detail"
 SCREEN_SETTINGS_MENU = "settings_menu"
+SCREEN_DEBUG_MENU = "debug_menu"
 CLOCK_Y = 0
 LINE_HEIGHT = 8
 CHAR_WIDTH = 6
@@ -22,9 +23,10 @@ class UI():
     def __init__(self, display:OLEDDisplay):
         """Initialize menu structure, selection state and render flags."""
         self.display = display
-        self.main_menu_items = ["Emotes", "Settings",]
+        self.main_menu_items = ["Emotes", "Settings", "Debug"]
         self.emotes_menu_items = ["Gif", "Clock", "Cross", "Open eye", "Sleep", "Dice", "Back", "test3", "test4", "test5"]
         self.settings_menu_items = ["Display","Boop", "Mic", "Blink", "Accelerometer","Wifi", "Verbose", "Back"]
+        self.debug_lines = []
         self.setting_values = {
             "Display": False,
             "Boop": False,
@@ -76,6 +78,8 @@ class UI():
                     self.active_screen = SCREEN_EMOTES_MENU
                 elif selected_item == "Settings":
                     self.active_screen = SCREEN_SETTINGS_MENU
+                elif selected_item == "Debug":
+                    self.active_screen = SCREEN_DEBUG_MENU
                 else:
                     self.active_screen = SCREEN_MAIN_SCREEN
                 self.needs_render = True
@@ -147,6 +151,12 @@ class UI():
                     return EVENT_SETTING_SELECTED, selected_item
                 self.needs_render = True
             return None
+        
+        if self.active_screen == SCREEN_DEBUG_MENU:
+            if prev_click or next_click or confirm_click:
+                self.active_screen = SCREEN_MAIN_MENU
+                self.needs_render = True
+            return None
 
         if next_click or prev_click:
             if self.active_screen == SCREEN_MAIN_SCREEN:
@@ -166,6 +176,13 @@ class UI():
         """Update the rendered clock value and redraw only when it changes."""
         if self.clock_text != value:
             self.clock_text = value
+            self.needs_render = True
+
+    def set_debug_lines(self, lines):
+        """Update the debug screen rows and redraw only when they change."""
+        normalized_lines = [str(line) for line in lines]
+        if self.debug_lines != normalized_lines:
+            self.debug_lines = normalized_lines
             self.needs_render = True
 
     def get_active_menu_emote(self):
@@ -229,6 +246,8 @@ class UI():
             self.render_emote_detail()
         elif self.active_screen == SCREEN_SETTINGS_MENU:
             self.render_settings()
+        elif self.active_screen == SCREEN_DEBUG_MENU:
+            self.render_debug()
 
         self.needs_render = False
 
@@ -277,6 +296,12 @@ class UI():
     def render_emote_detail(self):
         """Render the currently selected emote detail screen."""
         self.render_screen_text(f"Emote:\n{self.selected_emote}\nPREV/NEXT=BACK")
+
+    def render_debug(self):
+        """Render the current debug information on the OLED."""
+        lines = ["Debug"]
+        lines.extend(self.debug_lines[:MAX_VISIBLE_LIST_ROWS])
+        self.render_screen_text("\n".join(lines))
 
     def render_selectable_list(self, title, items, selected_index, scroll_offset=0):
         """Render a simple selectable list with the current cursor highlighted."""
