@@ -90,6 +90,11 @@ class APDSSensor:
     """Wrapper around the APDS9960 sensor on the shared I2C bus."""
     def __init__(self):
         self.i2c = get_i2c()
+        self.sensor = None
+        self._initialize_sensor()
+
+    def _initialize_sensor(self):
+        """Create or recreate the APDS9960 instance after a bus error."""
         self.sensor = APDS9960(self.i2c)
         self.sensor.enable_proximity = True
         self.sensor.enable_color = True
@@ -99,13 +104,28 @@ class APDSSensor:
         return scan_i2c()
 
     def get_value(self):
-        """Return the current proximity reading."""
-        return self.sensor.proximity
+        """Return the current proximity reading, or None on I2C failure."""
+        try:
+            return self.sensor.proximity
+        except OSError:
+            try:
+                self._initialize_sensor()
+                return self.sensor.proximity
+            except OSError:
+                return None
 
     def get_color(self):
         """Return current color data when available, otherwise None."""
-        if self.sensor.color_data_ready:
-            return self.sensor.color_data
+        try:
+            if self.sensor.color_data_ready:
+                return self.sensor.color_data
+        except OSError:
+            try:
+                self._initialize_sensor()
+                if self.sensor.color_data_ready:
+                    return self.sensor.color_data
+            except OSError:
+                return None
         return None
 
 

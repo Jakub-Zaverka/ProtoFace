@@ -3,6 +3,7 @@
 import microcontroller
 import os
 import time
+import adafruit_logging as logging
 from display import Display
 from accelerometer import Accelerometer
 from mic import Microphone
@@ -17,6 +18,7 @@ from UI import EVENT_SETTING_SELECTED
 from UI import UI
 
 NVM_MAGIC = b"PFS1"
+LOG_BUFFER_SIZE = 100
 SETTING_ENV_KEYS = {
     "Accelerometer": "ACCELEROMETER_ON",
     "Boop": "APDS_ON",
@@ -50,6 +52,22 @@ nose_matrix = None
 eye_matrix = None
 mouth_matrix = None
 whole_matrix = None
+sys_log = []
+logger = None
+
+
+class ListHandler(logging.Handler):
+    """Keep recent log entries in a plain Python list."""
+
+    def __init__(self, storage, max_items=LOG_BUFFER_SIZE):
+        super().__init__()
+        self.storage = storage
+        self.max_items = max_items
+
+    def emit(self, record):
+        self.storage.append(str(record.msg))
+        if self.max_items is not None and len(self.storage) > self.max_items:
+            del self.storage[:-self.max_items]
 
 
 def load_runtime_settings():
@@ -101,6 +119,10 @@ WIFI_ON = read_bool_setting("WIFI_ON", True)
 VERBOSE = read_bool_setting("VERBOSE", False)
 BLINK_ON = read_bool_setting("BLINK_ON", True)
 DISPLAY_ON = read_bool_setting("DISPLAY_ON", True)
+
+logger = logging.getLogger("runtime")
+logger.setLevel(logging.INFO)
+logger.addHandler(ListHandler(sys_log))
 
 
 def persist_boolean_setting(key, value):
@@ -242,6 +264,7 @@ def toggle_setting(setting_name):
     global DISPLAY_ON
     global display
     global face_emotes
+    # global sys_log
 
     if setting_name == "Accelerometer":
         ACCELEROMETER_ON = not ACCELEROMETER_ON
@@ -310,7 +333,9 @@ def toggle_setting(setting_name):
         return setting_name
 
     if VERBOSE:
-        print(f"Unknown setting: {setting_name}")
+        message = f"Unknown setting: {setting_name}"
+        print(message)
+        logger.warning(message)
     return None
 
 
@@ -384,6 +409,7 @@ toggled_setting = None
 
 while True:
     toggled_setting = None
+    iteration_logs = []
     movement = accelerometer.derivation() if ACCELEROMETER_ON else None
     mic_value = mic.get_value() if MIC_ON else None
     proximity_value = apds.get_value() if APDS_ON else None
@@ -393,7 +419,6 @@ while True:
     up_click = up_pressed and not prev_up_pressed
     down_click = down_pressed and not prev_down_pressed
     prev_click = prev_pressed and not prev_prev_pressed
-    
     #if movement
     if (
         ACCELEROMETER_ON
@@ -456,21 +481,32 @@ while True:
     # debug print
     if VERBOSE:
         if ACCELEROMETER_ON:
-            print(f"Accelerometer: {movement}")
+            message = f"Accelerometer: {movement}"
+            iteration_logs.append(message)
+            logger.info(message)
 
         if MIC_ON:
-            print(f"Mic: {mic_value}")
+            message = f"Mic: {mic_value}"
+            iteration_logs.append(message)
+            logger.info(message)
 
         if APDS_ON:
             # print(apds.scan())
             #print(apds.get_color())
-            print(f"APDS: {proximity_value}")
+            message = f"APDS: {proximity_value}"
+            iteration_logs.append(message)
+            logger.info(message)
 
         if toggled_setting is not None:
-            print(f"UI setting: {toggled_setting}")
+            message = f"UI setting: {toggled_setting}"
+            iteration_logs.append(message)
+            logger.info(message)
 
-        print("----")
-    
+        if iteration_logs:
+            print("------")
+            print(f"{get_clock_text()}{iteration_logs}")
+
+
     
     if display is not None:
         display.refresh()
