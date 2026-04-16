@@ -1,14 +1,11 @@
 """Helpers for reading and calibrating the onboard accelerometer."""
 
-import board
 import adafruit_lis3dh
 import time
-
-i2c = board.I2C()
-sensor = adafruit_lis3dh.LIS3DH_I2C(i2c, address=0x19)
-sensor.range = adafruit_lis3dh.RANGE_2_G
+from I2C_sim import get_i2c
 
 SAMPLE_SIZE = 20
+LIS3DH_ADDRESSES = (0x19, 0x18)
 
 
 class Accelerometer:
@@ -16,6 +13,8 @@ class Accelerometer:
 
     def __init__(self):
         """Initialize state and capture the initial sensor baseline."""
+        self.i2c = self._get_i2c()
+        self.sensor = self._initialize_sensor()
         self.axis = [0, 0, 0]
         self.x = 0
         self.y = 0
@@ -25,6 +24,37 @@ class Accelerometer:
         self.avg_z = 0
         self.__calibrate__()
         self.__get_messurements__()
+
+    def _get_i2c(self):
+        """Return the available hardware I2C bus."""
+        return get_i2c()
+
+    def _initialize_sensor(self):
+        """Try supported LIS3DH I2C addresses and return the first match."""
+        last_error = None
+        for address in LIS3DH_ADDRESSES:
+            try:
+                sensor = adafruit_lis3dh.LIS3DH_I2C(self.i2c, address=address)
+                sensor.range = adafruit_lis3dh.RANGE_2_G
+                return sensor
+            except ValueError as error:
+                last_error = error
+
+        detected_addresses = self._scan_i2c_addresses()
+        raise ValueError(
+            "LIS3DH nebyl nalezen na adresach 0x19 ani 0x18. "
+            f"Na I2C jsou videt adresy: {detected_addresses}"
+        ) from last_error
+
+    def _scan_i2c_addresses(self):
+        """Return currently detected I2C addresses for diagnostics."""
+        while not self.i2c.try_lock():
+            pass
+
+        try:
+            return [hex(address) for address in self.i2c.scan()]
+        finally:
+            self.i2c.unlock()
     
     def print_axis(self):
         """Print the latest raw axis values for quick debugging."""
@@ -33,7 +63,7 @@ class Accelerometer:
 
     def __get_messurements__(self):
         """Refresh the cached raw acceleration values from the sensor."""
-        self.axis = sensor.acceleration
+        self.axis = self.sensor.acceleration
         self.x = self.axis[0]
         self.y = self.axis[1]
         self.z = self.axis[2]
@@ -43,7 +73,7 @@ class Accelerometer:
         # kalibrace senzoru
         suma_x = suma_y = suma_z = 0
         for _ in range(SAMPLE_SIZE):
-            self.axis = sensor.acceleration
+            self.axis = self.sensor.acceleration
             self.x = self.axis[0]
             self.y = self.axis[1]
             self.z = self.axis[2]
