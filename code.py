@@ -511,7 +511,6 @@ while True:
             print("------")
             print(f"{get_clock_text()}{iteration_logs}")
 
-    print(btn_prev.value)
     
     if display is not None:
         display.refresh()
