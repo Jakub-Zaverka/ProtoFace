@@ -487,6 +487,7 @@ while True:
             confirm_click=up_click,
             next_click=down_click,
             prev_click=prev_click,
+            server=server
         )
         active_menu_emote = ui.get_active_menu_emote()
 

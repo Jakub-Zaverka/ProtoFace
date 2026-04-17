@@ -1,6 +1,7 @@
 """OLED menu state machine and rendering helpers for the device UI."""
 
 from I2C_sim import OLEDDisplay
+from server import ServerClass
 
 SCREEN_MAIN_MENU = "main_menu"
 SCREEN_MAIN_SCREEN = "main_screen"
@@ -47,123 +48,157 @@ class UI():
         self.clock_text = "--:--"
         self.needs_render = True
 
-    def handle_input(self, confirm_click, next_click, prev_click=False):
+    def _consume_api_call(self, server: ServerClass, expected_value):
+        """Consume one pending API command when it matches the expected value."""
+        if server is None or server.api_call != expected_value:
+            return False
+        server.api_call = ""
+        return True
+
+    def _move_selection(self, index_name, offset_name, items, step):
+        """Move one list selection cursor and keep the visible window in sync."""
+        selected_index = (getattr(self, index_name) + step) % len(items)
+        setattr(self, index_name, selected_index)
+        setattr(
+            self,
+            offset_name,
+            self.get_follow_scroll_offset(
+                selected_index,
+                getattr(self, offset_name),
+                len(items),
+            ),
+        )
+        self.needs_render = True
+
+    def _open_main_selected_item(self):
+        """Open the currently selected item from the main menu."""
+        selected_item = self.main_menu_items[self.main_selected_index]
+        if selected_item == "Emotes":
+            self.active_screen = SCREEN_EMOTES_MENU
+        elif selected_item == "Settings":
+            self.active_screen = SCREEN_SETTINGS_MENU
+        elif selected_item == "Debug":
+            self.active_screen = SCREEN_DEBUG_MENU
+        else:
+            self.active_screen = SCREEN_MAIN_SCREEN
+        self.needs_render = True
+
+    def _open_selected_emote(self):
+        """Open the selected emote item or go back to the main menu."""
+        selected_item = self.emotes_menu_items[self.emotes_selected_index]
+        if selected_item == "Back":
+            self.active_screen = SCREEN_MAIN_MENU
+        else:
+            self.selected_emote = selected_item
+            self.active_screen = SCREEN_EMOTE_DETAIL
+        self.needs_render = True
+
+    def _select_setting_item(self):
+        """Handle confirmation on the settings menu."""
+        selected_item = self.settings_menu_items[self.settings_selected_index]
+        if selected_item == "Back":
+            self.active_screen = SCREEN_MAIN_MENU
+            self.needs_render = True
+            return None
+
+        self.needs_render = True
+        return EVENT_SETTING_SELECTED, selected_item
+
+    def _return_from_overlay_screen(self):
+        """Return from detail/debug screens back to their parent menu."""
+        if self.active_screen == SCREEN_MAIN_SCREEN:
+            self.active_screen = SCREEN_MAIN_MENU
+        elif self.active_screen == SCREEN_EMOTE_DETAIL:
+            self.active_screen = SCREEN_EMOTES_MENU
+        elif self.active_screen == SCREEN_DEBUG_MENU:
+            self.active_screen = SCREEN_MAIN_MENU
+        self.needs_render = True
+
+    def handle_input(self, server:ServerClass ,confirm_click, next_click, prev_click=False, ):
         """Update menu state from button clicks and return optional events."""
         if self.active_screen == SCREEN_MAIN_MENU:
-            if prev_click:
-                self.main_selected_index = (
-                    self.main_selected_index - 1
-                ) % len(self.main_menu_items)
-                self.main_scroll_offset = self.get_follow_scroll_offset(
-                    self.main_selected_index,
-                    self.main_scroll_offset,
-                    len(self.main_menu_items),
+            if prev_click or self._consume_api_call(server, "up"):
+                self._move_selection(
+                    "main_selected_index",
+                    "main_scroll_offset",
+                    self.main_menu_items,
+                    -1,
                 )
-                self.needs_render = True
 
-            if next_click:
-                self.main_selected_index = (
-                    self.main_selected_index + 1
-                ) % len(self.main_menu_items)
-                self.main_scroll_offset = self.get_follow_scroll_offset(
-                    self.main_selected_index,
-                    self.main_scroll_offset,
-                    len(self.main_menu_items),
+            if next_click or self._consume_api_call(server, "down"):
+                self._move_selection(
+                    "main_selected_index",
+                    "main_scroll_offset",
+                    self.main_menu_items,
+                    1,
                 )
-                self.needs_render = True
 
-            if confirm_click:
-                selected_item = self.main_menu_items[self.main_selected_index]
-                if selected_item == "Emotes":
-                    self.active_screen = SCREEN_EMOTES_MENU
-                elif selected_item == "Settings":
-                    self.active_screen = SCREEN_SETTINGS_MENU
-                elif selected_item == "Debug":
-                    self.active_screen = SCREEN_DEBUG_MENU
-                else:
-                    self.active_screen = SCREEN_MAIN_SCREEN
-                self.needs_render = True
+            if confirm_click or self._consume_api_call(server, "ok"):
+                self._open_main_selected_item()
             return None
 
         if self.active_screen == SCREEN_EMOTES_MENU:
-            if prev_click:
-                self.emotes_selected_index = (
-                    self.emotes_selected_index - 1
-                ) % len(self.emotes_menu_items)
-                self.emotes_scroll_offset = self.get_follow_scroll_offset(
-                    self.emotes_selected_index,
-                    self.emotes_scroll_offset,
-                    len(self.emotes_menu_items),
+            if prev_click or self._consume_api_call(server, "up"):
+                self._move_selection(
+                    "emotes_selected_index",
+                    "emotes_scroll_offset",
+                    self.emotes_menu_items,
+                    -1,
                 )
-                self.needs_render = True
 
-            if next_click:
-                self.emotes_selected_index = (
-                    self.emotes_selected_index + 1
-                ) % len(self.emotes_menu_items)
-                self.emotes_scroll_offset = self.get_follow_scroll_offset(
-                    self.emotes_selected_index,
-                    self.emotes_scroll_offset,
-                    len(self.emotes_menu_items),
+            if next_click or self._consume_api_call(server, "down"):
+                self._move_selection(
+                    "emotes_selected_index",
+                    "emotes_scroll_offset",
+                    self.emotes_menu_items,
+                    1,
                 )
-                self.needs_render = True
 
-            if confirm_click:
-                selected_item = self.emotes_menu_items[self.emotes_selected_index]
-                if selected_item == "Back":
-                    self.active_screen = SCREEN_MAIN_MENU
-                else:
-                    self.selected_emote = selected_item
-                    self.active_screen = SCREEN_EMOTE_DETAIL
-                    self.needs_render = True
-                self.needs_render = True
+            if confirm_click or self._consume_api_call(server, "ok"):
+                self._open_selected_emote()
             return None
 
         if self.active_screen == SCREEN_SETTINGS_MENU:
-            if prev_click:
-                self.settings_selected_index = (
-                    self.settings_selected_index - 1
-                ) % len(self.settings_menu_items)
-                self.settings_scroll_offset = self.get_follow_scroll_offset(
-                    self.settings_selected_index,
-                    self.settings_scroll_offset,
-                    len(self.settings_menu_items),
+            if prev_click or self._consume_api_call(server, "up"):
+                self._move_selection(
+                    "settings_selected_index",
+                    "settings_scroll_offset",
+                    self.settings_menu_items,
+                    -1,
                 )
-                self.needs_render = True
 
-            if next_click:
-                self.settings_selected_index = (
-                    self.settings_selected_index + 1
-                ) % len(self.settings_menu_items)
-                self.settings_scroll_offset = self.get_follow_scroll_offset(
-                    self.settings_selected_index,
-                    self.settings_scroll_offset,
-                    len(self.settings_menu_items),
+            if next_click or self._consume_api_call(server, "down"):
+                self._move_selection(
+                    "settings_selected_index",
+                    "settings_scroll_offset",
+                    self.settings_menu_items,
+                    1,
                 )
-                self.needs_render = True
 
-            if confirm_click:
-                selected_item = self.settings_menu_items[self.settings_selected_index]
-                if selected_item == "Back":
-                    self.active_screen = SCREEN_MAIN_MENU
-                else:
-                    self.needs_render = True
-                    return EVENT_SETTING_SELECTED, selected_item
-                self.needs_render = True
+            if confirm_click or self._consume_api_call(server, "ok"):
+                return self._select_setting_item()
             return None
         
         if self.active_screen == SCREEN_DEBUG_MENU:
-            if prev_click or next_click or confirm_click:
-                self.active_screen = SCREEN_MAIN_MENU
-                self.needs_render = True
+            if (
+                prev_click
+                or next_click
+                or confirm_click
+                or self._consume_api_call(server, "up")
+                or self._consume_api_call(server, "down")
+                or self._consume_api_call(server, "ok")
+            ):
+                self._return_from_overlay_screen()
             return None
 
-        if next_click or prev_click:
-            if self.active_screen == SCREEN_MAIN_SCREEN:
-                self.active_screen = SCREEN_MAIN_MENU
-            elif self.active_screen == SCREEN_EMOTE_DETAIL:
-                self.active_screen = SCREEN_EMOTES_MENU
-            self.needs_render = True
+        if (
+            next_click
+            or prev_click
+            or self._consume_api_call(server, "up")
+            or self._consume_api_call(server, "down")
+            or self._consume_api_call(server, "ok")
+        ):
+            self._return_from_overlay_screen()
         return None
 
     def set_setting_value(self, name, value):
