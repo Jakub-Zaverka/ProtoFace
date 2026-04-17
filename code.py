@@ -16,6 +16,7 @@ from clock import Clock
 import emotes
 from UI import EVENT_SETTING_SELECTED
 from UI import UI
+from server import ServerClass
 
 NVM_MAGIC = b"PFS1"
 LOG_BUFFER_SIZE = 100
@@ -54,6 +55,7 @@ mouth_matrix = None
 whole_matrix = None
 sys_log = []
 logger = None
+server = None
 
 
 class ListHandler(logging.Handler):
@@ -123,6 +125,20 @@ DISPLAY_ON = read_bool_setting("DISPLAY_ON", True)
 logger = logging.getLogger("runtime")
 logger.setLevel(logging.INFO)
 logger.addHandler(ListHandler(sys_log))
+
+
+def start_network_services():
+    """Start HTTP-related network services for the active Wi-Fi connection."""
+    global server
+
+    if wifi is None:
+        raise RuntimeError("Wi-Fi must be initialized before starting services")
+
+    wifi.advertise_http(80)
+    if server is None:
+        server = ServerClass(wifi)
+    print("HTTP server available at {}".format(wifi.base_url(80)))
+    print("HTTP server available at {}".format(wifi.ip_url(80)))
 
 
 def persist_boolean_setting(key, value):
@@ -264,7 +280,7 @@ def toggle_setting(setting_name):
     global DISPLAY_ON
     global display
     global face_emotes
-    # global sys_log
+    global server
 
     if setting_name == "Accelerometer":
         ACCELEROMETER_ON = not ACCELEROMETER_ON
@@ -287,6 +303,10 @@ def toggle_setting(setting_name):
 
     if setting_name == "Wifi":
         if WIFI_ON:
+            if server is not None:
+                server.server.stop()
+                server = None
+
             WIFI_ON = False
             persist_runtime_setting(setting_name, WIFI_ON)
             return setting_name
@@ -299,6 +319,9 @@ def toggle_setting(setting_name):
             if device_clock is None:
                 device_clock = Clock(wifi)
             device_clock.sync_ntp()
+
+            start_network_services()
+                
             WIFI_ON = True
             persist_runtime_setting(setting_name, WIFI_ON)
             return setting_name
@@ -307,6 +330,8 @@ def toggle_setting(setting_name):
             if VERBOSE:
                 print(f"Failed to enable Wifi: {error}")
             return None
+        
+
     
     if setting_name == "Verbose":
         VERBOSE = not VERBOSE
@@ -375,6 +400,7 @@ if WIFI_ON:
     wifi.connect()
     device_clock = Clock(wifi)
     device_clock.sync_ntp()
+    start_network_services()
 
 if MIC_ON:
     mic = Microphone()
@@ -481,6 +507,9 @@ while True:
             mic_value=mic_value,
             proximity_value=proximity_value,
         )
+
+    if server is not None:
+        server.poll()
 
 
     # debug print

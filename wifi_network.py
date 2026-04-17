@@ -34,6 +34,7 @@ class Wifi:
         self.hostname = hostname if hostname is not None else os.getenv("DEVICE_HOSTNAME")
         if not self.hostname:
             self.hostname = "protogen"
+        self.radio = wifi.radio
         self.pool = None
         self.mdns_server = None
         if self.wifi_ssid is None:
@@ -43,21 +44,21 @@ class Wifi:
 
     def connect(self):
         """Connect the radio and create a socket pool for network clients."""
-        wifi.radio.hostname = self.hostname
+        self.radio.hostname = self.hostname
         try:
-            wifi.radio.connect(self.wifi_ssid, self.wifi_password)
+            self.radio.connect(self.wifi_ssid, self.wifi_password)
         except ConnectionError:
             print("Failed to connect to main WiFi with provided credentials")
             try:
-                wifi.radio.connect(self.backup_wifi, self.backup_wifi_passw)
+                self.radio.connect(self.backup_wifi, self.backup_wifi_passw)
             except:
                 print("Failed to connect to backup WiFi with provided credentials")
                 raise
 
-        self.mdns_server = mdns.Server(wifi.radio)
+        self.mdns_server = mdns.Server(self.radio)
         self.mdns_server.hostname = self.hostname
         self.mdns_server.instance_name = self.hostname
-        self.pool = socketpool.SocketPool(wifi.radio)
+        self.pool = socketpool.SocketPool(self.radio)
 
     def advertise_http(self, port):
         """Advertise a future HTTP interface over mDNS."""
@@ -72,3 +73,7 @@ class Wifi:
     def base_url(self, port):
         """Return the preferred local URL for the device."""
         return "http://{}.local:{}".format(self.hostname, port)
+
+    def ip_url(self, port):
+        """Return the direct local IP URL for the device."""
+        return "http://{}:{}".format(self.radio.ipv4_address, port)
