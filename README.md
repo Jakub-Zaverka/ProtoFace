@@ -1,54 +1,51 @@
 # ProtoFace
 
-Podrobna technicka dokumentace k projektu pro `Adafruit MatrixPortal S3` v `CircuitPython`.
+Technicka dokumentace projektu pro `Adafruit MatrixPortal S3` v `CircuitPython`.
 
-Projekt ridi animovany oblicej na RGB LED matici `64x32`, jednoduche menu na OLED displeji `SSD1306`, reakce na mikrofon, akcelerometr a proximity senzor `APDS9960`, a volitelne synchronizaci casu pres Wi-Fi.
+Projekt zobrazuje animovany oblicej na RGB LED matici `64x32`, ovladaci menu na OLED `SSD1306`, reaguje na mikrofon, proximity senzor a akcelerometr a umi volitelne pripojit Wi-Fi, synchronizovat cas a vystavit jednoduche HTTP ovladani.
 
-## Co projekt dela
+## Co projekt umi
 
-Zarizeni zobrazuje stylizovany oblicej rozdeleny do nekolika samostatnych oblasti:
-
-- oko
-- nos
-- usta
-- cela plocha matice pro fullscreen animace
-
-Chovani obliceje se meni podle vstupu:
-
-- mikrofon otevre usta pri hlasitejsim zvuku
-- proximity senzor spusti reakci typu `boop`
-- akcelerometr posouva oblicej podle pohybu zarizeni
-- OLED menu umoznuje rucne vybirat emote a zapinat nebo vypinat funkce
-- Wi-Fi umozni synchronizaci casu a zobrazeni hodin
+- vykreslit oblicej z oddelenych casti `eye`, `nose`, `mouth`
+- prehravat fullscreen emote a GIF animace na cele matici
+- otevrit usta pri zvuku z mikrofonu
+- spustit `boop` reakci podle proximity senzoru
+- posouvat oblicej podle pohybu z akcelerometru
+- zobrazit OLED menu pro emote, nastaveni a debug
+- pres Wi-Fi synchronizovat cas a zobrazovat ho na OLED i RGB matici
+- prijimat jednoduche HTTP prikazy `up`, `down`, `ok` jako dalkove ovladani menu
 
 ## Cilovy hardware
 
-Dokumentace vychazi z aktualni konfigurace projektu a `boot_out.txt`, kde je uvedeno:
+Aktualni projekt odpovida konfiguraci:
 
 - deska: `Adafruit MatrixPortal S3`
 - firmware: `Adafruit CircuitPython 10.1.4`
-- hlavni LED vystup: HUB75 RGB matrix `64x32`
-- I2C zarizeni:
-  - `SSD1306` OLED `128x64` na adrese `0x3C`
-  - `APDS9960` proximity / color senzor
-- dalsi vstupy:
-  - mikrofon na analogovem pinu `A3`
-  - akcelerometr `LIS3DH` pres I2C na adrese `0x19`
-  - tlacitka `BUTTON_UP` a `BUTTON_DOWN`
+- hlavni vystup: HUB75 RGB matrix `64x32`
+- OLED: `SSD1306 128x64` na `0x3C`
+- proximity senzor: `APDS9960`
+- akcelerometr: `LIS3DH` na `0x19`
+- mikrofon: analogovy vstup `A3`
+- tlacitka:
+  - `BUTTON_UP`
+  - `BUTTON_DOWN`
+  - `A4` jako zpet / predchozi
 
 ## Pouzite knihovny
 
-Projekt pouziva knihovny ulozene v `lib/`, zejmena:
+Projekt pouziva hlavne:
 
 - `adafruit_ssd1306`
 - `adafruit_apds9960`
 - `adafruit_lis3dh`
 - `adafruit_ntp`
 - `adafruit_imageload`
+- `adafruit_httpserver`
 - `adafruit_framebuf`
 - `adafruit_gfx`
+- `adafruit_logging`
 
-Krome toho projekt pouziva standardni moduly CircuitPython, napriklad:
+Ze standardnich modulu CircuitPython se pouzivaji napr.:
 
 - `board`
 - `digitalio`
@@ -58,58 +55,65 @@ Krome toho projekt pouziva standardni moduly CircuitPython, napriklad:
 - `gifio`
 - `wifi`
 - `socketpool`
-- `rtc`
+- `mdns`
 - `microcontroller`
+- `rtc`
 
 ## Struktura repozitare
 
 ### Hlavni soubory
 
 - `code.py`
-  - hlavni entrypoint aplikace
-  - inicializace hardwaru
-  - hlavni smycka
-  - obsluha tlacitek, senzoru, UI a animaci
+  - hlavni runtime
+  - nacteni ulozenych nastaveni z `microcontroller.nvm`
+  - inicializace hardwaru, UI, emote controlleru a HTTP serveru
+  - hlavni smycka se ctenim vstupu a refreshi displeju
 
 - `display.py`
-  - vrstva nad HUB75 RGB matici
-  - vytvareni regionu obrazovky
-  - nahravani BMP a GIF obsahu do jednotlivych casti displeje
+  - wrapper nad HUB75 RGB matici
+  - vytvareni regionu
+  - nacitani BMP a GIF snimku do oblasti displeje
 
 - `emotes.py`
-  - definice emote zdroju a runtime logiky
-  - sprava regionu oka, nosu, ust a fullscreen vrstvy
-  - blikani, boop, zobrazeni hodin, GIF animace
+  - definice emote zdroju
+  - sprava regionu `eye`, `nose`, `mouth`, `whole`
+  - blikani, boop, reakce na mikrofon
+  - fullscreen hodiny kreslene vlastnim 5x7 fontem
 
 - `UI.py`
-  - jednoduche menu pro OLED displej
-  - prepinani obrazovek, vyber emote, prepinani nastaveni
+  - stavovy automat OLED menu
+  - menu `Emotes`, `Settings`, `Debug`
+  - synchronizace stavu toggle voleb
+  - prijem lokalnich tlacitek i HTTP prikazu
 
-- `I2C_sim.py`
-  - sdileny I2C pristup
-  - wrapper pro `APDS9960`
-  - wrapper pro textovy vystup na `SSD1306`
+- `server.py`
+  - jednoduchy HTTP server nad `adafruit_httpserver`
+  - endpointy `/up`, `/down`, `/ok`
 
 - `wifi_network.py`
-  - pripojeni k Wi-Fi
-  - fallback na zalozni sit
-  - mDNS hostname a priprava socket poolu
+  - pripojeni k hlavni nebo zalozni Wi-Fi
+  - `mdns` hostname
+  - `SocketPool`
 
 - `clock.py`
   - synchronizace RTC pres NTP
-  - formatovani casu jako `HH:MM`
+  - format `HH:MM`
 
 - `accelerometer.py`
   - kalibrace a cteni `LIS3DH`
-  - vypocet odchylky od klidove polohy
 
 - `mic.py`
   - kalibrace mikrofonu
-  - jednoducha amplitudova detekce aktivity
+  - jednoducha detekce odchylky od klidove hladiny
+
+- `I2C_sim.py`
+  - sdilena I2C sbernice
+  - wrapper pro `APDS9960`
+  - wrapper pro textove vykreslovani na OLED
 
 ### Assety
 
-Adresar `faces/` obsahuje bitmapy a GIFy pouzivane jako emote:
+Adresar `faces/` obsahuje obrazky a GIFy pouzivane jako emote:
 
 - `eye.bmp`
 - `eye_blink.bmp`
@@ -124,69 +128,28 @@ Adresar `faces/` obsahuje bitmapy a GIFy pouzivane jako emote:
 
 ## Architektura aplikace
 
-### 1. `code.py` jako centralni orchestrator
+`code.py` je centralni orchestrator. Pri startu:
 
-Soubor `code.py` propojuje vsechny moduly a dela tri zakladni veci:
+1. nacte runtime nastaveni z `microcontroller.nvm`
+2. doplni vychozi hodnoty z `settings.toml`
+3. inicializuje zapnute moduly
+4. vytvori OLED UI
+5. vstoupi do `while True`
 
-1. nacte konfiguraci
-2. inicializuje dostupny hardware
-3. v nekonecne smycce pravidelne cte vstupy a aktualizuje vystupy
+V kazde iteraci:
 
-### 2. Dva zobrazovaci vystupy
-
-Projekt pouziva dva nezavisle displeje:
-
-- HUB75 RGB matice
-  - hlavni vyraz obliceje a fullscreen animace
-- SSD1306 OLED
-  - textove menu, stavove volby a hodiny
-
-### 3. Udalostni model
-
-Vstupy prichazi ze ctyr zdroju:
-
-- tlacitka
-- mikrofon
-- proximity senzor
-- akcelerometr
-
-Tyto vstupy se v kazdem cyklu smycky prekladaji na:
-
-- zmenu stavu menu
-- zapnuti nebo vypnuti funkci
-- jednorazovy nebo prubezny emote
-- posun vykreslenych casti obliceje
-
-## Jak se projekt spousti
-
-Po startu zarizeni probehne priblizne tento sled:
-
-1. nacteni ulozenych runtime nastaveni z `microcontroller.nvm`
-2. doplneni chybejicich hodnot z `settings.toml`
-3. inicializace zapnutych modulu:
-   - akcelerometr
-   - Wi-Fi
-   - hodiny
-   - mikrofon
-   - APDS9960
-   - OLED
-   - RGB display stack
-4. vytvoreni OLED UI
-5. vstup do nekonecne smycky `while True`
-
-V kazdem pruchodu hlavni smyckou se provede:
-
-1. cteni senzoru
-2. detekce kliknuti tlacitek
-3. synchronizace stavu do OLED UI
-4. obsluha UI udalosti
-5. aktualizace emote logiky
-6. refresh RGB displeje
-7. kratke `sleep(0.1)`
+1. precte senzory a stavy tlacitek
+2. prepocita pohyb obliceje podle akcelerometru
+3. synchronizuje aktualni hodnoty do UI
+4. obslouzi menu a pripadne toggly
+5. aktualizuje emote controller
+6. obslouzi HTTP server
+7. refresne RGB matici
+8. uspi smycku na `0.1 s`
 
 ## Rozlozeni RGB matice
 
-Trida `Display` v `display.py` rozdeluje matici `64x32` do ctyr regionu:
+`Display` v `display.py` deli matici `64x32` na ctyri regiony:
 
 - `nose`
   - pozice `0,0`
@@ -203,32 +166,39 @@ Trida `Display` v `display.py` rozdeluje matici `64x32` do ctyr regionu:
 - `whole`
   - pozice `0,0`
   - velikost `64x32`
-  - pouziva se pro fullscreen emote, napr. hodiny nebo GIF
 
-Normalni oblicej se sklada ze tri casti `eye`, `nose`, `mouth`. Kdyz je aktivni `whole`, ostatni casti se skryji.
+Normalni oblicej je slozeny z `eye`, `nose`, `mouth`. Kdyz je aktivni `whole`, tri caste regiony se skryji.
 
 ## OLED UI
 
 UI je definovane v `UI.py` jako jednoduchy stavovy automat.
 
-### Dostupne obrazovky
+### Obrazovky
 
 - `main_menu`
 - `main_screen`
 - `emotes_menu`
 - `emote_detail`
 - `settings_menu`
+- `debug_menu`
 
-### Ovladani tlacitky
-
-Projekt pouziva dve tlacitka:
-
-- `BUTTON_DOWN`
-  - pohyb na dalsi polozku
-  - pripadne navrat z detailu zpet
+### Ovladani
 
 - `BUTTON_UP`
-  - potvrzeni vyberu
+  - potvrzeni
+
+- `BUTTON_DOWN`
+  - dalsi polozka
+
+- `A4`
+  - predchozi polozka
+  - navrat z detailni obrazovky
+
+Stejne akce umi simulovat i HTTP API:
+
+- `GET /up`
+- `GET /down`
+- `GET /ok`
 
 ### Polozky menu
 
@@ -236,6 +206,7 @@ Hlavni menu:
 
 - `Emotes`
 - `Settings`
+- `Debug`
 
 Menu emote:
 
@@ -246,7 +217,9 @@ Menu emote:
 - `Sleep`
 - `Dice`
 - `Back`
-- testovaci polozky `test3`, `test4`, `test5`
+- `test3`
+- `test4`
+- `test5`
 
 Menu nastaveni:
 
@@ -259,15 +232,21 @@ Menu nastaveni:
 - `Verbose`
 - `Back`
 
-UI zobrazuje vpravo nahore cas a prvni radek automaticky zkracuje tak, aby se s hodinami neprekryval.
+Debug screen zobrazuje aktualni radky s hodnotami:
+
+- akcelerometr
+- mikrofon
+- APDS proximity
+
+Prvni radek UI se automaticky zkracuje, aby se neprekryval s hodinami vpravo nahore.
 
 ## Emote system
 
-Za beh obliceje odpovida `FaceEmoteController` v `emotes.py`.
+Za logiku obliceje odpovida `FaceEmoteController` v `emotes.py`.
 
 ### Regiony
 
-Controller interni spravuje ctyri regiony:
+Controller spravuje:
 
 - `eye_region`
 - `nose_region`
@@ -276,15 +255,15 @@ Controller interni spravuje ctyri regiony:
 
 Kazdy region si drzi:
 
-- aktivni nebo neaktivni stav
-- aktualni zdroj obrazku
-- dobu trvani
-- cas od spusteni
-- pripadny `gifio.OnDiskGif` player
+- aktivni stav
+- aktualni source
+- delku trvani
+- uplynuly cas
+- GIF player, pokud je zdroj animovany
 
 ### Idle stav
 
-Ve vychozim stavu se pouzivaji:
+Vychozi obrazky:
 
 - oko: `/faces/eye.bmp`
 - nos: `/faces/nose.bmp`
@@ -292,23 +271,23 @@ Ve vychozim stavu se pouzivaji:
 
 ### Automaticke reakce
 
-Pokud neni aktivni fullscreen emote z menu, bezi tato logika:
+Pokud neni aktivni menu emote:
 
 - mikrofon:
-  - kdyz `mic_value > 5`, zobrazi se mluvici usta
+  - pri `mic_value > 5` se pouziji mluvici usta
 
 - proximity:
-  - kdyz `proximity_value > 200`, oko prejde do `boop` vyrazu
+  - pri `proximity_value > 200` se aktivuje `boop` oko
 
 - blikani:
-  - po urcitem poctu cyklu se aktivuje blink emote oka
+  - po urcitem poctu cyklu se aktivuje `eye_blink.bmp`
 
 ### Emote z menu
 
-Pri otevreni detailu emote se na RGB matici prubezne renderuje odpovidajici vyraz:
+Pri otevrenem detailu emote ma menu prioritu nad automatickymi reakcemi.
 
 - `Clock`
-  - fullscreen bitmapa s aktualnim casem
+  - fullscreen hodiny vykreslene vlastnim 5x7 fontem se skalovanim `2x`
 
 - `Gif`
   - fullscreen GIF `giphy.gif`
@@ -317,27 +296,19 @@ Pri otevreni detailu emote se na RGB matici prubezne renderuje odpovidajici vyra
   - fullscreen GIF `dice.gif`
 
 - `Cross`
-  - kriz misto oka
+  - kriz v regionu oka
 
 - `Sleep`
-  - zavrene oko
+  - spici oko
 
 - `Open eye`
-  - otevrene oko + mluvici usta
-
-Dokud je detail emote aktivni, ma tento vyber prioritu nad automatickymi reakcemi ze senzoru.
+  - otevrene oko a mluvici usta
 
 ## Konfigurace
 
 ### `settings.toml`
 
-Projekt pouziva `settings.toml` pro:
-
-- Wi-Fi prihlasovaci udaje
-- hostname zarizeni
-- vychozi zapnuti jednotlivych modulu
-
-Doporuceny tvar:
+Projekt cte konfiguraci z `settings.toml`, typicky:
 
 ```toml
 HOME_WIFI_SSID = "moje_wifi"
@@ -353,28 +324,36 @@ MIC_ON = true
 APDS_ON = true
 SSD1306_ON = true
 WIFI_ON = true
+BLINK_ON = true
+DISPLAY_ON = true
 VERBOSE = false
 ```
 
-Poznamka:
+Pouzivane klice:
 
-- `settings.toml` obsahuje citlive udaje a nema smysl ho commitovat s realnymi hesly
-- promenne `AP_SSID` a `AP_PASSWORD` jsou v aktualnim kodu pritomne v konfiguraci, ale aplikace je nikde nepouziva
+- `HOME_WIFI_SSID`
+- `HOME_WIFI_PASSWORD`
+- `BACKUP_WIFI_SSID`
+- `BACKUP_WIFI_PASSWORD`
+- `DEVICE_HOSTNAME`
+- `ACCELEROMETER_ON`
+- `MIC_ON`
+- `APDS_ON`
+- `SSD1306_ON`
+- `WIFI_ON`
+- `BLINK_ON`
+- `DISPLAY_ON`
+- `VERBOSE`
 
 ### Runtime perzistence
 
-Prepinace z OLED menu se ukladaji do `microcontroller.nvm`.
+Toggle hodnoty z UI se ukladaji do `microcontroller.nvm`.
 
-To znamena:
+- pouziva se magic hlavicka `PFS1`
+- stavy jsou ulozene jako bitove pole
+- runtime nastaveni ma prioritu nad `settings.toml`
 
-- zmena pres menu prezije restart
-- ulozene runtime nastaveni ma prioritu pred vychozi hodnotou ze `settings.toml`
-
-V `code.py` je pro to pouzit jednoduchy bitovy format s magic hlavickou `PFS1`.
-
-### Prepinatelne funkce
-
-Z UI lze zapinat a vypinat:
+Pres UI lze za behu menit:
 
 - `Display`
 - `Boop`
@@ -384,129 +363,67 @@ Z UI lze zapinat a vypinat:
 - `Wifi`
 - `Verbose`
 
-## Sit a cas
+`SSD1306_ON` se cte jen pri startu, v UI se neprepina.
+
+## Sit a HTTP ovladani
 
 ### Wi-Fi
 
-Trida `Wifi`:
+`Wifi` v `wifi_network.py`:
 
-- nacte credentials z environment promennych
-- zkusi hlavni Wi-Fi
-- pri selhani zkusi zalozni sit
+- nacte hlavni a zalozni credentials
 - nastavi `wifi.radio.hostname`
-- pripravi `socketpool.SocketPool`
-- nastavi mDNS jmeno zarizeni
+- zkusí hlavni sit, pri chybe zalozni
+- vytvori `mdns.Server`
+- vytvori `socketpool.SocketPool`
+
+Po uspesnem pripojeni se HTTP sluzba inzeruje pres mDNS.
+
+### HTTP server
+
+`ServerClass` v `server.py` startuje server na portu `80` a vystavuje:
+
+- `/`
+  - testovaci textova odpoved
+
+- `/up`
+  - simuluje pohyb nahoru / predchozi polozku
+
+- `/down`
+  - simuluje pohyb dolu / dalsi polozku
+
+- `/ok`
+  - simuluje potvrzeni
+
+Aktualni `api_call` pak zpracovava `UI.handle_input()`.
 
 ### Hodiny a NTP
 
-Trida `Clock`:
+`Clock` v `clock.py`:
 
 - pouziva `adafruit_ntp.NTP`
-- synchronizuje `rtc.RTC()`
+- implicitne syncuje proti `tak.cesnet.cz`
+- pouziva `tz_offset=2`
+- pri chybe prejde na fallback zdroj, aby aplikace nespadla
 - vraci cas jako `HH:MM`
 
-Pokud neni dostupna sit nebo je sync vypnuty, pouzije fallback datum nebo cas a aplikace nespadne.
+## Pridani noveho emote
 
-## Jednotlive moduly podrobne
+Typicky postup:
 
-### `display.py`
-
-Trida `Display` resi:
-
-- inicializaci `rgbmatrix.RGBMatrix`
-- vytvoreni `FramebufferDisplay`
-- spravu `displayio.Group`
-- vytvareni regionu pres `create_matrix()`
-- prekresleni pres `refresh()`
-- deinit pro korektni znovuvytvoreni displeje
-
-Dale obsahuje utility pro:
-
-- prevod 2D pole na `displayio.Bitmap`
-- kopirovani bitmap do regionu
-- mapovani barev do lokalni palety
-- prevod `RGB565 -> RGB888`
-- nacitani BMP a GIF frame do aktivniho regionu
-
-### `I2C_sim.py`
-
-Soubor centralizuje I2C zarizeni:
-
-- `get_i2c()`
-  - vraci sdilenou I2C sbernici
-
-- `scan_i2c()`
-  - vraci seznam nalezenych adres
-
-- `APDSSensor`
-  - proximity a color data z `APDS9960`
-
-- `OLEDDisplay`
-  - textovy wrapper nad `SSD1306`
-  - vlastni jednoduchy 5x7 font
-  - multiline rendering
-  - davkove vykresleni vice textovych bloku
-
-### `accelerometer.py`
-
-Modul:
-
-- inicializuje `LIS3DH`
-- pri startu provede kalibraci z vice vzorku
-- vraci odchylku od klidoveho stavu pres `derivation()`
-
-V `code.py` se tato odchylka pouziva pro posun dlazdic obliceje po displeji.
-
-### `mic.py`
-
-Modul:
-
-- nacita analogovy mikrofon na `A3`
-- pri startu zmeri klidovou uroven
-- vraci normalizovanou odchylku od baseline
-
-### `UI.py`
-
-Modul:
-
-- drzi seznamy menu polozek
-- uklada vybrany index a scroll offset
-- generuje udalost `EVENT_SETTING_SELECTED`
-- vykresluje menu na OLED pres `show_text_blocks()`
-
-### `emotes.py`
-
-Modul:
-
-- sjednocuje obrazkove a GIF emote zdroje
-- spravuje prepinani mezi idle a aktivnim stavem
-- prehrava GIF po snimcich
-- vytvari fullscreen bitmapu s casem
-- implementuje prioritu menu emote nad automatickymi reakcemi
-
-## Jak pridat novy emote
-
-Nejjednodussi postup:
-
-1. vloz novy asset do `faces/`
-2. v `emotes.py` vytvor novy source pres:
-   - `create_image_emote(...)`
-   - nebo `create_gif_emote(...)`
+1. vloz asset do `faces/`
+2. v `emotes.py` vytvor zdroj pres `create_image_emote(...)` nebo `create_gif_emote(...)`
 3. pridej polozku do `self.emotes_menu_items` v `UI.py`
-4. rozsirit `_apply_active_menu_emote()` v `FaceEmoteController`
-5. podle potreby nastav cilovy region:
-   - `eye`
-   - `mouth`
-   - `nose`
-   - `whole`
+4. rozsiri `_apply_active_menu_emote()` ve `FaceEmoteController`
+5. vyber region `eye`, `nose`, `mouth` nebo `whole`
 
-Priklad pro bitmapovy emote:
+Priklad:
 
 ```python
 self.eye_happy_emote = create_image_emote("/faces/eye_happy.bmp", "happy")
 ```
 
-A nasledne v `_apply_active_menu_emote()`:
+A v `_apply_active_menu_emote()`:
 
 ```python
 if active_menu_emote == "happy":
@@ -516,8 +433,6 @@ if active_menu_emote == "happy":
 ```
 
 ## Nasazeni na zarizeni
-
-Typicky postup:
 
 1. nahrat `CircuitPython` na `MatrixPortal S3`
 2. zkopirovat Python soubory do korene zarizeni
@@ -532,60 +447,59 @@ Po restartu se automaticky spusti `code.py`.
 
 ### Verbose rezim
 
-Pri zapnuti `Verbose` se do serial konzole vypisuje:
+Pri zapnutem `Verbose` se do konzole vypisuje:
 
-- akcelerometr
+- hodnoty akcelerometru
 - mikrofon
 - proximity
 - zmeny nastaveni z UI
 
+Krome `print()` se logy ukladaji i do vnitrniho list bufferu.
+
 ### I2C diagnostika
 
-`I2C_sim.py` obsahuje `scan_i2c()`, ktere lze pouzit pro kontrolu, zda jsou zarizeni na sbernici skutecne videt.
+`I2C_sim.py` obsahuje helpery pro scan I2C zarizeni a rychlou kontrolu, jestli jsou periferni moduly na sbernici videt.
 
 ### Typicke problemy
 
 - OLED nic nezobrazuje
-  - zkontroluj adresu `0x3C`
-  - over zapnuti `SSD1306_ON`
+  - over adresu `0x3C`
+  - over `SSD1306_ON`
   - over I2C zapojeni
 
 - Wi-Fi se nepripoji
   - over hodnoty v `settings.toml`
-  - zkontroluj, zda neni problem s dosahem
+  - zkontroluj dosah
   - projekt zkousi i zalozni sit
+
+- HTTP ovladani nereaguje
+  - over, ze je `Wifi` zapnute
+  - otevri URL vytistene do serial konzole
+  - over, ze server bezi na portu `80`
 
 - hodiny ukazuji spatny cas
   - over funkcni Wi-Fi
-  - zkontroluj `tz_offset` v `clock.py`
+  - uprav `tz_offset` v `clock.py`
 
 - oblicej nereaguje na pohyb
-  - over inicializaci `LIS3DH`
-  - zkontroluj, ze je zapnuty `Accelerometer`
+  - over `LIS3DH`
+  - over, ze je `Accelerometer` zapnuty
 
 - usta nereaguji na zvuk
-  - over mikrofon na pinu `A3`
-  - uprav prah `mic_value > 5` podle realneho hardware
+  - over mikrofon na `A3`
+  - pripadne uprav prah `mic_value > 5`
 
 - boop nereaguje
   - over `APDS9960`
-  - uprav prah `proximity_value > 200`
+  - pripadne uprav prah `proximity_value > 200`
 
-## Poznamky k dalsimu rozvoji
+## Poznamky k aktualnimu stavu
 
-Soucasna architektura je dobre pouzitelna pro dalsi rozsirovani:
+README odpovida aktualnimu kodu v repozitari, vcetne:
 
-- nove emote assety
-- dalsi polozky OLED menu
-- detailnejsi status obrazovky
-- webove rozhrani pres Wi-Fi
-- jemnejsi animace podle senzoru
+- HTTP serveru v `server.py`
+- debug obrazovky v `UI.py`
+- tritiho tlacitka na `A4`
+- `BLINK_ON` a `DISPLAY_ON` runtime nastaveni
 
-Prakticky je projekt uz ted rozdeleny do rozumne samostatnych vrstev:
-
-- hardware wrappery
-- UI logika
-- emote controller
-- hlavni runtime orchestrator
-
-To usnadnuje upravy bez nutnosti prepisovat cely projekt.
+Testovaci polozky `test3`, `test4`, `test5` jsou v menu pritomne, ale zatim nemaji implementovanou logiku v emote controlleru.

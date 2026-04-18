@@ -1,5 +1,6 @@
-"""Shared I2C helpers for the APDS9960 sensor and SSD1306 OLED."""
+"""Program sdili I2C sbernici mezi APDS9960 senzorem a OLED displejem SSD1306."""
 
+# Na jedne sbernici bezi proximity senzor i OLED, proto se I2C inicializuje jen jednou.
 import board
 from adafruit_apds9960.apds9960 import APDS9960
 import adafruit_ssd1306
@@ -10,6 +11,7 @@ OLED_ADDRESS = 0x3C
 
 _shared_i2c = None
 
+# Lokalni 5x7 font slouzi pro textove menu bez zavislosti na externim font souboru.
 _FONT_5X7 = {
     " ": [0x00, 0x00, 0x00, 0x00, 0x00],
     "!": [0x00, 0x00, 0x5F, 0x00, 0x00],
@@ -61,10 +63,11 @@ _FONT_5X7 = {
 
 
 def get_i2c():
-    """Return a shared hardware I2C bus instance for JST-SH/STEMMA devices."""
+    """Vrati sdilenou I2C sbernici pro vsechna pripojena zarizeni."""
     global _shared_i2c
 
     if _shared_i2c is None:
+        # Na nekterych deskach je k dispozici primo STEMMA_I2C, jinak obecne I2C.
         if hasattr(board, "STEMMA_I2C"):
             _shared_i2c = board.STEMMA_I2C()
         else:
@@ -74,9 +77,10 @@ def get_i2c():
 
 
 def scan_i2c():
-    """Scan the shared I2C bus and return detected device addresses."""
+    """Naskenuje I2C sbernici a vrati nalezene adresy."""
     i2c = get_i2c()
 
+    # I2C scan vyzaduje lock, proto se po pouziti vzdy zase odemkne.
     while not i2c.try_lock():
         pass
 
@@ -87,27 +91,29 @@ def scan_i2c():
 
 
 class APDSSensor:
-    """Wrapper around the APDS9960 sensor on the shared I2C bus."""
+    """Cte proximity a barvu z APDS9960 na sdilene I2C sbernici."""
     def __init__(self):
+        # Senzor se pri vytvoreni rovnou inicializuje a zapne potrebne kanaly.
         self.i2c = get_i2c()
         self.sensor = None
         self._initialize_sensor()
 
     def _initialize_sensor(self):
-        """Create or recreate the APDS9960 instance after a bus error."""
+        """Inicializuje APDS9960 nebo ho znovu vytvori po chybe sbernice."""
         self.sensor = APDS9960(self.i2c)
         self.sensor.enable_proximity = True
         self.sensor.enable_color = True
 
     def scan(self):
-        """Return visible I2C addresses for quick bus diagnostics."""
+        """Vrati adresy viditelne na I2C pro rychlou diagnostiku."""
         return scan_i2c()
 
     def get_value(self):
-        """Return the current proximity reading, or None on I2C failure."""
+        """Vrati aktualni proximity hodnotu nebo `None` pri chybe I2C."""
         try:
             return self.sensor.proximity
         except OSError:
+            # Pri obcasne chybe sbernice se senzor zkusí znovu vytvorit.
             try:
                 self._initialize_sensor()
                 return self.sensor.proximity
@@ -115,7 +121,7 @@ class APDSSensor:
                 return None
 
     def get_color(self):
-        """Return current color data when available, otherwise None."""
+        """Vrati aktualni barevna data, pokud jsou dostupna."""
         try:
             if self.sensor.color_data_ready:
                 return self.sensor.color_data
@@ -130,8 +136,9 @@ class APDSSensor:
 
 
 class OLEDDisplay:
-    """Text-only SSD1306 OLED helper using the shared I2C bus."""
+    """Vykresluje textove obrazovky na OLED SSD1306 pres sdilenou I2C."""
     def __init__(self, width=OLED_WIDTH, height=OLED_HEIGHT, address=OLED_ADDRESS):
+        # OLED se drzi jako jednoducha textova vrstva, ne jako plne graficke UI.
         self.i2c = get_i2c()
         self.width = width
         self.height = height
@@ -144,20 +151,20 @@ class OLEDDisplay:
         self.clear()
 
     def scan(self):
-        """Return visible I2C addresses for quick bus diagnostics."""
+        """Vrati adresy viditelne na I2C pro rychlou diagnostiku."""
         return scan_i2c()
 
     def clear(self):
-        """Clear the OLED framebuffer and update the display."""
+        """Vymaze OLED framebuffer a ihned ho zobrazi."""
         self.display.fill(0)
         self.display.show()
 
     def get_value(self):
-        """Return the underlying SSD1306 display instance."""
+        """Vrati puvodni instanci `SSD1306_I2C`."""
         return self.display
 
     def show_text(self, text, x=0, y=0, clear=True):
-        """Draw text at the given position and optionally clear first."""
+        """Vykresli text na zadanou pozici a pripadne nejdriv smaze displej."""
         if clear:
             self.display.fill(0)
 
@@ -166,10 +173,11 @@ class OLEDDisplay:
         self.display.show()
 
     def show_text_blocks(self, blocks, clear=True):
-        """Draw multiple text blocks and flush the OLED only once."""
+        """Vykresli vice textovych bloku a OLED obnovi jen jednou."""
         if clear:
             self.display.fill(0)
 
+        # Bloky umoznuji kombinovat menu, hodiny a debug text v jednom flushi.
         for block in blocks:
             text = block.get("text", "")
             x = block.get("x", 0)
@@ -179,7 +187,7 @@ class OLEDDisplay:
         self.display.show()
 
     def draw_status(self, boop=False, emote=False, emote_time=0, emote_name="", current_time = "00:00"):
-        """Render a simple multiline status screen for boop and emote."""
+        """Zobrazi jednoduchou stavovou obrazovku s emote a casem."""
         text = (
             f"Boop: {'ON' if boop else 'OFF'}\n"
             f"Emote: {'ON' if emote else 'OFF'}\n"
@@ -189,10 +197,11 @@ class OLEDDisplay:
         self.show_text(text)
 
     def _draw_text(self, text, x=0, y=0, color=1):
-        """Draw multiline text using the built-in 5x7 bitmap font."""
+        """Kresli vice radku textu lokalnim 5x7 bitmapovym fontem."""
         cursor_x = x
         cursor_y = y
 
+        # Text se automaticky zalamuje pri konci radku a zastavi se na spodku displeje.
         for char in str(text):
             if char == "\n":
                 cursor_x = x
@@ -210,7 +219,7 @@ class OLEDDisplay:
                 break
 
     def _draw_char(self, char, x, y, color=1):
-        """Draw a single character from the local bitmap font table."""
+        """Kresli jeden znak z lokalni tabulky bitmapoveho fontu."""
         glyph = _FONT_5X7.get(char)
         if glyph is None:
             glyph = _FONT_5X7.get(char.upper(), _FONT_5X7["?"])

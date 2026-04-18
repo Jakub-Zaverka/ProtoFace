@@ -1,5 +1,6 @@
-"""Helpers for reading and calibrating the onboard accelerometer."""
+"""Program cte akcelerometr LIS3DH a vraci pohyb proti zkalibrovane poloze."""
 
+# Modul meri relativni pohyb, ne absolutni polohu v prostoru.
 import adafruit_lis3dh
 import time
 from I2C_sim import get_i2c
@@ -9,10 +10,11 @@ LIS3DH_ADDRESSES = (0x19, 0x18)
 
 
 class Accelerometer:
-    """Read acceleration values and expose movement relative to calibration."""
+    """Meri zrychleni a pocita odchylku od klidove polohy."""
 
     def __init__(self):
-        """Initialize state and capture the initial sensor baseline."""
+        """Inicializuje senzor a ulozi vychozi klidove hodnoty."""
+        # Pri startu se nejdriv najde spravna I2C adresa a pak se udela kalibrace.
         self.i2c = self._get_i2c()
         self.sensor = self._initialize_sensor()
         self.axis = [0, 0, 0]
@@ -26,11 +28,12 @@ class Accelerometer:
         self.__get_messurements__()
 
     def _get_i2c(self):
-        """Return the available hardware I2C bus."""
+        """Vrati dostupnou hardwarovou I2C sbernici."""
         return get_i2c()
 
     def _initialize_sensor(self):
-        """Try supported LIS3DH I2C addresses and return the first match."""
+        """Zkusi podporovane adresy LIS3DH a vrati prvni funkcni variantu."""
+        # Nektere moduly pouzivaji 0x19, jine 0x18.
         last_error = None
         for address in LIS3DH_ADDRESSES:
             try:
@@ -47,7 +50,7 @@ class Accelerometer:
         ) from last_error
 
     def _scan_i2c_addresses(self):
-        """Return currently detected I2C addresses for diagnostics."""
+        """Vrati aktualne nalezene I2C adresy pro diagnostiku."""
         while not self.i2c.try_lock():
             pass
 
@@ -57,21 +60,21 @@ class Accelerometer:
             self.i2c.unlock()
     
     def print_axis(self):
-        """Print the latest raw axis values for quick debugging."""
+        """Vypise posledni surove osy pro rychly debug."""
         self.__get_messurements__()
         print(self.x, self.y, self.z)
 
     def __get_messurements__(self):
-        """Refresh the cached raw acceleration values from the sensor."""
+        """Aktualizuje ulozene surove hodnoty os ze senzoru."""
         self.axis = self.sensor.acceleration
         self.x = self.axis[0]
         self.y = self.axis[1]
         self.z = self.axis[2]
 
     def __calibrate__(self):
-        """Average several samples to establish the resting baseline."""
-        # kalibrace senzoru
+        """Zprumeruje vice vzorku a urci klidovou polohu senzoru."""
         suma_x = suma_y = suma_z = 0
+        # Klidova poloha vznikne jako prumer nekolika po sobe jdoucich vzorku.
         for _ in range(SAMPLE_SIZE):
             self.axis = self.sensor.acceleration
             self.x = self.axis[0]
@@ -87,18 +90,18 @@ class Accelerometer:
         self.avg_z = suma_z/SAMPLE_SIZE
 
     def derivation(self):
-        """Return rounded acceleration deltas from the calibrated baseline."""
+        """Vrati zaokrouhlenou odchylku od zkalibrovaneho zakladniho stavu."""
         self.__get_messurements__()
         derivation_x = self.x - self.avg_x
         derivation_y = self.y - self.avg_y
         derivation_z = self.z - self.avg_z
 
-        # do cm/s^2
+        # Aplikace pouziva jen relativni pohyb, prevod jednotek tu neni potreba.
         # derivation_x *= 100
         # derivation_y *= 100
         # derivation_z *= 100
 
-        #round
+        # Zaokrouhleni zjednodusi prahovani pohybu v hlavni smycce.
         derivation_x = round(derivation_x,2)
         derivation_y = round(derivation_y,2)
         derivation_z = round(derivation_z,2)

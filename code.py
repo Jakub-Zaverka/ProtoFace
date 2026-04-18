@@ -1,5 +1,6 @@
-"""Main runtime loop wiring sensors, buttons, the display and emote control."""
+"""Program ridi cely runtime obliceje, menu, senzoru, Wi-Fi a HTTP ovladani."""
 
+# Importy vsech modulu, ktere hlavni runtime propojuje.
 import microcontroller
 import os
 import time
@@ -18,6 +19,7 @@ from UI import EVENT_SETTING_SELECTED
 from UI import UI
 from server import ServerClass
 
+# Identifikator a mapa bitu pro ulozeni runtime voleb do `microcontroller.nvm`.
 NVM_MAGIC = b"PFS1"
 LOG_BUFFER_SIZE = 100
 SETTING_ENV_KEYS = {
@@ -41,6 +43,7 @@ SETTING_BITS = {
 
 MIN_MOVEMENT = 1
 
+# Globalni runtime stav. Jednotlive periferie se inicializuji jen pokud jsou zapnute.
 accelerometer = None
 mic = None
 apds = None
@@ -59,7 +62,7 @@ server = None
 
 
 class ListHandler(logging.Handler):
-    """Keep recent log entries in a plain Python list."""
+    """Uklada posledni log zaznamy do seznamu pro pozdejsi zobrazeni."""
 
     def __init__(self, storage, max_items=LOG_BUFFER_SIZE):
         super().__init__()
@@ -73,7 +76,8 @@ class ListHandler(logging.Handler):
 
 
 def load_runtime_settings():
-    """Load persisted UI settings from microcontroller NVM."""
+    """Nacte ulozene runtime prepinace z `microcontroller.nvm`."""
+    # Prvni byty NVM obsahuji hlavicku a jeden byte s bitovym polem prepinacu.
     if len(microcontroller.nvm) < len(NVM_MAGIC) + 1:
         return {}
 
@@ -89,7 +93,8 @@ def load_runtime_settings():
 
 
 def read_bool_setting(name, default):
-    """Read one boolean setting from runtime JSON, env config or fallback."""
+    """Precte jeden boolean z runtime pameti, `settings.toml` nebo fallbacku."""
+    # Prioritu ma hodnota ulozena za behu pres OLED menu.
     value = RUNTIME_SETTINGS.get(name)
     if value is not None:
         if isinstance(value, bool):
@@ -112,7 +117,7 @@ def read_bool_setting(name, default):
 
 RUNTIME_SETTINGS = load_runtime_settings()
 
-
+# Vychozi konfigurace runtime vznikne spojenim persistentnich voleb a `settings.toml`.
 ACCELEROMETER_ON = read_bool_setting("ACCELEROMETER_ON", True)
 MIC_ON = read_bool_setting("MIC_ON", True)
 APDS_ON = read_bool_setting("APDS_ON", True)
@@ -128,7 +133,7 @@ logger.addHandler(ListHandler(sys_log))
 
 
 def start_network_services():
-    """Start HTTP-related network services for the active Wi-Fi connection."""
+    """Spusti mDNS inzerci a HTTP server pro aktivni Wi-Fi pripojeni."""
     global server
 
     if wifi is None:
@@ -142,7 +147,8 @@ def start_network_services():
 
 
 def persist_boolean_setting(key, value):
-    """Store one boolean setting in microcontroller NVM."""
+    """Ulozi jeden runtime prepinac do `microcontroller.nvm`."""
+    # Vsechny runtime volby se ukladaji jako bity v jednom byte.
     if len(microcontroller.nvm) < len(NVM_MAGIC) + 1:
         if VERBOSE:
             print("microcontroller.nvm is too small for runtime settings")
@@ -165,7 +171,7 @@ def persist_boolean_setting(key, value):
 
 
 def persist_runtime_setting(setting_name, value):
-    """Map one UI setting name to its persisted runtime key and store it."""
+    """Prevede nazev polozky z UI na ulozeny klic a zapise ho do NVM."""
     key = SETTING_ENV_KEYS.get(setting_name)
     if key is None:
         if VERBOSE:
@@ -175,7 +181,7 @@ def persist_runtime_setting(setting_name, value):
 
 
 def initialize_display_stack():
-    """Create the HUB75 display, face regions and controller."""
+    """Vytvori RGB matici, regiony obliceje a controller emote."""
     global display
     global face_emotes
     global nose_matrix
@@ -183,6 +189,7 @@ def initialize_display_stack():
     global mouth_matrix
     global whole_matrix
 
+    # RGB matice je rozdelena na tri casti obliceje a jeden fullscreen region.
     display = Display()
     nose_matrix = display.create_matrix(
         name="nose",
@@ -228,7 +235,7 @@ def initialize_display_stack():
 
 
 def shutdown_display_stack():
-    """Release the HUB75 display and all objects bound to it."""
+    """Uvolni RGB matici a objekty navazane na aktivni displej."""
     global display
     global face_emotes
     global nose_matrix
@@ -250,7 +257,7 @@ def shutdown_display_stack():
 
 
 def handle_ui_event(event):
-    """Translate one UI event into app actions for the current loop."""
+    """Prevede jednu UI udalost na akci aplikace v aktualni iteraci."""
     toggled_setting = None
 
     if event is None:
@@ -265,7 +272,7 @@ def handle_ui_event(event):
 
 
 def toggle_setting(setting_name):
-    """Toggle one runtime setting and initialize hardware when needed."""
+    """Prepne jednu runtime volbu a pri potrebe doinicializuje hardware."""
     global ACCELEROMETER_ON
     global APDS_ON
     global WIFI_ON
@@ -283,6 +290,7 @@ def toggle_setting(setting_name):
     global server
 
     if setting_name == "Accelerometer":
+        # Pri zapnuti vytvor senzor jen jednou a pak uz ho znovu pouzivej.
         ACCELEROMETER_ON = not ACCELEROMETER_ON
         if ACCELEROMETER_ON and accelerometer is None:
             accelerometer = Accelerometer()
@@ -302,6 +310,7 @@ def toggle_setting(setting_name):
         return setting_name
 
     if setting_name == "Wifi":
+        # Vypnuti Wi-Fi zastavi HTTP server, zapnuti udela connect, sync hodin a start API.
         if WIFI_ON:
             if server is not None:
                 server.server.stop()
@@ -348,6 +357,7 @@ def toggle_setting(setting_name):
         return setting_name
     
     if setting_name == "Display":
+        # RGB matici lze za behu vytvorit i uplne uvolnit.
         DISPLAY_ON = not DISPLAY_ON
         if DISPLAY_ON:
             if display is None:
@@ -365,7 +375,7 @@ def toggle_setting(setting_name):
 
 
 def get_setting_values():
-    """Return the current UI-visible values for toggleable settings."""
+    """Vrati aktualni hodnoty voleb, ktere ma UI zobrazit."""
     return {
         "Display": DISPLAY_ON,
         "Boop": APDS_ON,
@@ -378,7 +388,7 @@ def get_setting_values():
 
 
 def get_clock_text():
-    """Return a clock string from RTC/localtime even without Wi-Fi sync."""
+    """Vrati text hodin z RTC nebo lokalniho casu i bez Wi-Fi syncu."""
     if device_clock is not None:
         return device_clock.get_time()
 
@@ -387,11 +397,18 @@ def get_clock_text():
 
 
 def sync_ui_settings(ui):
-    """Push current runtime setting values into the rendered UI."""
+    """Propise aktualni runtime volby do OLED UI."""
     for setting_name, setting_value in get_setting_values().items():
         ui.set_setting_value(setting_name, setting_value)
 
 
+# Casove konstanty pro automaticke reakce obliceje.
+BLINK_TIME_SET = 10
+BOOP_TIMER = 5
+EMOTE_TIMER = 10
+
+
+# Inicializace hardwaru podle nactenych runtime voleb.
 if ACCELEROMETER_ON:
     accelerometer = Accelerometer()
 
@@ -411,12 +428,7 @@ if APDS_ON:
 if SSD1306_ON:
     oled = OLEDDisplay()
 
-
-BLINK_TIME_SET = 10
-BOOP_TIMER = 5
-EMOTE_TIMER = 10
-
-
+# Tlacitka pouzivaji pull-up, stisk tedy vraci logickou nulu.
 btn_down = digitalio.DigitalInOut(board.BUTTON_DOWN)
 btn_up = digitalio.DigitalInOut(board.BUTTON_UP)
 btn_prev = digitalio.DigitalInOut(board.A4)
@@ -427,25 +439,32 @@ btn_prev.switch_to_input(pull=digitalio.Pull.UP)
 if DISPLAY_ON:
     initialize_display_stack()
 
+# OLED UI je volitelne. Kdyz neni OLED aktivni, zbytek runtime muze bezet dal.
 ui = UI(oled) if SSD1306_ON else None
 prev_up_pressed = False
 prev_down_pressed = False
 prev_prev_pressed = False
 toggled_setting = None
 
+# Hlavni smycka pravidelne cte vstupy, aktualizuje UI a prekresluje vystupy.
 while True:
     toggled_setting = None
     iteration_logs = []
+
+    # 1) Nacti vstupy ze senzoru.
     movement = accelerometer.derivation() if ACCELEROMETER_ON else None
     mic_value = mic.get_value() if MIC_ON else None
     proximity_value = apds.get_value() if APDS_ON else None
+
+    # 2) Preved fyzicke stavy tlacitek na jednotlive klik udalosti.
     up_pressed = not btn_up.value
     down_pressed = not btn_down.value
     prev_pressed = not btn_prev.value
     up_click = up_pressed and not prev_up_pressed
     down_click = down_pressed and not prev_down_pressed
     prev_click = prev_pressed and not prev_prev_pressed
-    #if movement
+
+    # 3) Posun oblicej podle akcelerometru, ale jen kdyz zrovna neni aktivni fullscreen emote.
     if (
         ACCELEROMETER_ON
         and face_emotes is not None
@@ -454,7 +473,7 @@ while True:
         if abs(movement[0]) > MIN_MOVEMENT or abs(movement[1]) > MIN_MOVEMENT or abs(movement[2]) > MIN_MOVEMENT:
             if VERBOSE:
                 print("move")
-            #correct accelerometer setting
+            # Posun vsechny regiony stejne, aby se oblicej hybal jako celek.
             eye_matrix["tile"].x -= int(movement[0])
             eye_matrix["tile"].y += int(movement[1])
             nose_matrix["tile"].x -= int(movement[0])
@@ -472,7 +491,8 @@ while True:
             mouth_matrix["tile"].y = 16
             whole_matrix["tile"].x = 0
             whole_matrix["tile"].y = 0
-    
+
+    # 4) Synchronizuj OLED UI, zpracuj vstup a zjisti, jestli je otevreny nejaky emote z menu.
     ui_event = None
     active_menu_emote = None
     if ui is not None:
@@ -491,16 +511,19 @@ while True:
         )
         active_menu_emote = ui.get_active_menu_emote()
 
+    # 5) Preved udalost z UI na zmenu runtime nastaveni.
     new_setting = handle_ui_event(ui_event)
     if new_setting is not None:
         toggled_setting = new_setting
         if toggled_setting == "Blink" and face_emotes is not None:
             face_emotes.blink_enabled = BLINK_ON
 
+    # 6) Po zpracovani zmen znovu vyrenderuj OLED.
     if ui is not None:
         sync_ui_settings(ui)
         ui.render_ui()
 
+    # 7) Aktualizuj emote controller podle menu a senzoru.
     if face_emotes is not None:
         face_emotes.update(
             active_menu_emote=active_menu_emote,
@@ -509,11 +532,12 @@ while True:
             proximity_value=proximity_value,
         )
 
+    # 8) Obsluz HTTP server, pokud bezi.
     if server is not None:
         server.poll()
 
 
-    # debug print
+    # 9) Vypis debug logy do konzole a do kruhoveho bufferu.
     if VERBOSE:
         if ACCELEROMETER_ON:
             message = f"Accelerometer: {movement}"
@@ -541,10 +565,12 @@ while True:
             print("------")
             print(f"{get_clock_text()}{iteration_logs}")
 
-    
+    # 10) Odesli vykreslene zmeny na RGB matici a uloz stavy tlacitek pro dalsi iteraci.
     if display is not None:
         display.refresh()
     prev_up_pressed = up_pressed
     prev_down_pressed = down_pressed
     prev_prev_pressed = prev_pressed
+
+    # Kratke uspani drzi smycku stabilni a omezuje zbytecne pretizeni CPU.
     time.sleep(0.1)

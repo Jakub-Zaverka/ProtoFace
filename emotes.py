@@ -1,10 +1,12 @@
-"""Emote assets and runtime logic for face regions shown on the matrix."""
+"""Program prepina emote obliceje, prehrava GIFy a kresli fullscreen hodiny."""
 
+# Importy pro praci s bitmapami, GIFy a casem.
 import gc
 import displayio
 import gifio
 import time
 
+# Jednoduchy 5x7 font pouzity pro fullscreen hodiny na RGB matici.
 FONT_5X7 = {
     "0": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
     "1": ("00100", "01100", "00100", "00100", "00100", "00100", "01110"),
@@ -21,8 +23,10 @@ FONT_5X7 = {
 
 BLINKING_SLOWER = 25
 
+
+# Zakladni stavebni bloky pro regiony a jejich zdroje.
 def create_region(name, matrix_group, idle_source=None, hidden_when_idle=False):
-    """Create bookkeeping state for one drawable face region."""
+    """Vytvori stav jedne vykreslovane oblasti obliceje."""
     return {
         "name": name,
         "matrix": matrix_group,
@@ -32,7 +36,7 @@ def create_region(name, matrix_group, idle_source=None, hidden_when_idle=False):
         "elapsed": 0,
         "current_source": None,
         "duration": 0,
-        # Keep animated-source state alive between main-loop ticks.
+        # Stav GIF prehravani zustava mezi iteracemi hlavni smycky.
         "player": None,
         "is_gif": False,
         "loop": False,
@@ -42,14 +46,14 @@ def create_region(name, matrix_group, idle_source=None, hidden_when_idle=False):
 
 
 def _get_source_content(source):
-    """Normalize a source object to raw bitmap content or a file path."""
+    """Vrati obsah zdroje jako cestu nebo bitmapovy payload."""
     if isinstance(source, dict):
         return source["content"]
     return source
 
 
 def _get_source_name(source):
-    """Return a short human-readable name for a source payload."""
+    """Vrati kratke jmeno aktivniho zdroje pro debug a stav."""
     if isinstance(source, dict):
         return source["name"]
     if isinstance(source, str):
@@ -60,14 +64,14 @@ def _get_source_name(source):
 
 
 def _get_source_type(source):
-    """Return the logical source type used by the region loader."""
+    """Vrati logicky typ zdroje pouzity pri nahravani do regionu."""
     if isinstance(source, dict):
         return source.get("type", "image")
     return "image"
 
 
 def _clear_region_player(region):
-    """Release any GIF player currently attached to the region."""
+    """Uvolni GIF prehravac prirazeny k regionu."""
     player = region["player"]
     if player is not None:
         player.deinit()
@@ -81,13 +85,14 @@ def _clear_region_player(region):
 
 
 def _load_source_into_region(display, region, source):
-    """Load a new source into the region and initialize animation state."""
+    """Nahraje novy zdroj do regionu a pripravi stav animace."""
     region["matrix"]["tile"].hidden = False
     source_type = _get_source_type(source)
 
     _clear_region_player(region)
 
     if source_type == "gif":
+        # GIF se neprepocitava dopredu. Jen se otevre soubor a pripravi prvni frame.
         path = _get_source_content(source)
         player = gifio.OnDiskGif(path)
         player.next_frame()
@@ -109,7 +114,7 @@ def _load_source_into_region(display, region, source):
 
 
 def _tick_gif_region(display, region):
-    """Advance an animated region by exactly one GIF frame."""
+    """Posune animovany region o jeden GIF frame."""
     player = region["player"]
     if player is None:
         return False
@@ -150,7 +155,7 @@ def _tick_gif_region(display, region):
 
 
 def _reset_region_to_idle(display, region):
-    """Stop the active source and restore the region idle image."""
+    """Ukonci aktivni emote a vrati region do idle stavu."""
     _clear_region_player(region)
 
     region["active"] = False
@@ -167,10 +172,11 @@ def _reset_region_to_idle(display, region):
 
 
 def update_emote(display, region, source=None, duration=0, verbose=False):
-    """Advance one region and swap in a new source when requested."""
+    """Posune jeden region v case a pripadne do nej prepne novy zdroj."""
     emote_started = False
 
     if source is not None:
+        # Kdyz prisel novy zdroj, region se prepne nebo pokracuje v animaci.
         if not region["active"] or region["current_source"] != source:
             _load_source_into_region(display, region, source)
             emote_started = True
@@ -198,13 +204,14 @@ def update_emote(display, region, source=None, duration=0, verbose=False):
     return region["active"], emote_started
 
 
+# Tovarny pro jednotny format emote zdroju.
 def get_emote_name(region):
-    """Return the display name of the source currently active in a region."""
+    """Vrati jmeno zdroje, ktery je v regionu prave aktivni."""
     return _get_source_name(region["current_source"])
 
 
 def create_image_emote(path, name=None):
-    """Wrap an image path in the emote source structure used by the controller."""
+    """Zabali bitmapovy asset do struktury pouzivane controllerem."""
     return {
         "type": "image",
         "name": name or path.split("/")[-1],
@@ -213,7 +220,7 @@ def create_image_emote(path, name=None):
 
 
 def create_gif_emote(path, name=None, loop=False):
-    """Wrap a GIF path in the emote source structure used by the controller."""
+    """Zabali GIF asset do struktury pouzivane controllerem."""
     return {
         "type": "gif",
         "name": name or path.split("/")[-1],
@@ -223,7 +230,7 @@ def create_gif_emote(path, name=None, loop=False):
 
 
 def _draw_char(bitmap, char, x, y, scale=2, color=1):
-    """Draw one scaled 5x7 glyph into a bitmap."""
+    """Nakresli jeden zvetseny znak 5x7 do bitmapy."""
     glyph = FONT_5X7[char]
     for row, row_bits in enumerate(glyph):
         for col, bit in enumerate(row_bits):
@@ -237,7 +244,7 @@ def _draw_char(bitmap, char, x, y, scale=2, color=1):
 
 
 def create_time_bitmap(device_clock=None):
-    """Render the current device time into a 64x32 bitmap."""
+    """Vykresli aktualni cas do bitmapy o velikosti `64x32`."""
     if device_clock is not None:
         text = device_clock.get_time()
     else:
@@ -249,6 +256,7 @@ def create_time_bitmap(device_clock=None):
     palette[0] = 0x000000
     palette[1] = 0xFFFFFF
 
+    # Font se zvetsi 2x, aby byl na 64x32 matici jeste dobre citelny.
     scale = 2
     char_width = 5 * scale
     char_height = 7 * scale
@@ -267,7 +275,7 @@ def create_time_bitmap(device_clock=None):
 
 
 def create_clock_emote(device_clock):
-    """Create a fullscreen emote source containing the current time."""
+    """Vytvori fullscreen emote se zobrazenym aktualnim casem."""
     return {
         "name": "clock",
         "content": create_time_bitmap(device_clock),
@@ -275,7 +283,7 @@ def create_clock_emote(device_clock):
 
 
 class FaceEmoteController:
-    """Manage face-region emotes and their per-loop update rules."""
+    """Ridi emote regionu obliceje a jejich reakce v kazde iteraci smycky."""
 
     def __init__(
         self,
@@ -292,6 +300,7 @@ class FaceEmoteController:
         blink_emote_timer=None,
         verbose=False,
     ):
+        # Controller drzi odkazy na vsechny regiony a jejich casovani.
         self.display = display
         self.eye_matrix = eye_matrix
         self.nose_matrix = nose_matrix
@@ -310,6 +319,7 @@ class FaceEmoteController:
         )
         self.blink_time = 0
 
+        # Zde jsou zaregistrovane vsechny assety, ktere controller umi pouzit.
         self.eye_idle_emote = create_image_emote("/faces/eye.bmp", "eye")
         self.eye_sleep_emote = create_image_emote("/faces/sleep.bmp", "sleep")
         self.eye_blink_emote = create_image_emote("/faces/eye_blink.bmp", "blink")
@@ -325,12 +335,13 @@ class FaceEmoteController:
         # self.mouth_smile_emote = create_image_emote("/faces/mouth_smile.bmp", "smile")
         # self.eye_blink_emote = create_gif_emote("/faces/eye_blink.gif", "blink", loop=False)
 
-
+        # Kazdy region ma vlastni runtime stav a muze mit jiny zdroj i delku trvani.
         self.eye_region = create_region("eye", eye_matrix, self.eye_idle_emote)
         self.nose_region = create_region("nose", nose_matrix, self.nose_idle_source)
         self.mouth_region = create_region("mouth", mouth_matrix, self.mouth_idle_emote)
         self.whole_region = create_region("whole", whole_matrix, hidden_when_idle=True)
 
+        # Fullscreen vrstva je v idle stavu schovana a pri startu se nactou idle obrazky obliceje.
         self.whole_matrix["tile"].hidden = True
         self.display.load_bmp_into_matrix(
             self.eye_matrix,
@@ -346,13 +357,13 @@ class FaceEmoteController:
         )
 
     def _set_face_hidden(self, hidden):
-        """Hide or show the three face-part regions together."""
+        """Skryje nebo zobrazi tri zakladni casti obliceje najednou."""
         self.eye_matrix["tile"].hidden = hidden
         self.nose_matrix["tile"].hidden = hidden
         self.mouth_matrix["tile"].hidden = hidden
 
     def _create_requests(self):
-        """Build an empty per-region request map for the current frame."""
+        """Pripravi prazdne pozadavky pro regiony v aktualni iteraci."""
         return {
             "eye": {"source": None, "duration": 0},
             "nose": {"source": None, "duration": 0},
@@ -361,12 +372,13 @@ class FaceEmoteController:
         }
 
     def _apply_active_menu_emote(self, requests, active_menu_emote, device_clock):
-        """Map the currently opened emote detail to persistent region requests."""
+        """Prevede otevreny emote z menu na pozadavky pro jednotlive regiony."""
         if active_menu_emote is None:
             return False
 
         active_menu_emote = str(active_menu_emote).strip().lower()
-        
+
+        # Emote vybrany v menu ma prioritu pred automatickymi reakcemi senzoru.
         if active_menu_emote == "clock":
             requests["whole"]["source"] = create_clock_emote(device_clock)
             requests["whole"]["duration"] = 1
@@ -409,7 +421,8 @@ class FaceEmoteController:
         mic_value=None,
         proximity_value=None,
     ):
-        """Update region requests from inputs and advance all active emotes."""
+        """Zpracuje vstupy a posune vsechny aktivni emote o jeden krok."""
+        # Nejdriv se poskladaji pozadavky na jednotlive regiony pro tuto iteraci.
         requests = self._create_requests()
         menu_emote_active = self._apply_active_menu_emote(
             requests,
@@ -418,6 +431,7 @@ class FaceEmoteController:
         )
 
         if menu_emote_active:
+            # Pri aktivnim menu emote se preskoci automaticke reakce mikrofonu, boop a blikani.
             started = {}
             for name, region in (
                 ("nose", self.nose_region),
@@ -437,6 +451,7 @@ class FaceEmoteController:
             self.blink_time = 0
             return started
 
+        # Mikrofon meni jen region ust a jen pokud neni aktivni fullscreen vrstva.
         if not menu_emote_active and mic_value is not None and not self.whole_region["active"]:
             if mic_value > 5:
                 requests["mouth"]["source"] = self.mouth_speak_emote
@@ -444,6 +459,7 @@ class FaceEmoteController:
                 if self.verbose:
                     print("speak")
 
+        # Proximity senzor aktivuje otevrene oko jako boop reakci.
         if (
             not menu_emote_active
             and
@@ -455,6 +471,7 @@ class FaceEmoteController:
                 requests["eye"]["source"] = self.eye_boop_emote
                 requests["eye"]["duration"] = self.boop_timer
 
+        # Automaticke blikani bezi jen kdyz oko zrovna nic jineho nezobrazuje.
         if (
             self.blink_enabled
             and not menu_emote_active
@@ -470,6 +487,7 @@ class FaceEmoteController:
             elif get_emote_name(self.eye_region) != "blink":
                 self.blink_time = 0
 
+        # Nakonec se vsechny regiony posunou o jeden krok podle sestavenych pozadavku.
         started = {}
         for name, region in (
             ("nose", self.nose_region),
@@ -493,7 +511,7 @@ class FaceEmoteController:
         return started
 
     def any_active(self):
-        """Return True when any face region currently shows a timed emote."""
+        """Vrati `True`, kdyz je v nekterem regionu aktivni emote."""
         return any(
             region["active"]
             for region in (
@@ -505,7 +523,8 @@ class FaceEmoteController:
         )
 
     def get_status_region(self):
-        """Return the highest-priority region for status reporting."""
+        """Vrati nejdulezitejsi region pro hlaseni aktualniho stavu."""
+        # Prioritu ma fullscreen vrstva, pak jednotlive casti obliceje.
         if self.whole_region["active"]:
             return self.whole_region
         if self.eye_region["active"]:
@@ -517,11 +536,11 @@ class FaceEmoteController:
         return self.eye_region
 
     def is_boop_active(self):
-        """Return True while the boop eye emote is currently active."""
+        """Vrati `True`, kdyz je aktivni boop emote oka."""
         return get_emote_name(self.eye_region) == "boop"
 
     def shutdown(self):
-        """Release active animation players before the display is torn down."""
+        """Uvolni aktivni prehravace driv, nez se vypne displej."""
         for region in (
             self.eye_region,
             self.nose_region,

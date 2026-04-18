@@ -1,8 +1,10 @@
-"""OLED menu state machine and rendering helpers for the device UI."""
+"""Program ridi OLED menu, debug obrazovku a ovladani emote i nastaveni."""
 
+# UI pracuje s OLED textovym vystupem a volitelnym HTTP ovladanim.
 from I2C_sim import OLEDDisplay
 from server import ServerClass
 
+# Konstanty pro nazvy obrazovek a geometrii textoveho layoutu.
 SCREEN_MAIN_MENU = "main_menu"
 SCREEN_MAIN_SCREEN = "main_screen"
 SCREEN_EMOTES_MENU = "emotes_menu"
@@ -19,11 +21,12 @@ EVENT_SETTING_SELECTED = "setting_selected"
 
 
 class UI():
-    """Manage OLED navigation state and emit selection events."""
+    """Spravuje stav OLED menu a vraci akce vybrane uzivatelem."""
 
     def __init__(self, display:OLEDDisplay):
-        """Initialize menu structure, selection state and render flags."""
+        """Inicializuje strukturu menu, kurzory a priznaky prekresleni."""
         self.display = display
+        # Tyto seznamy urcuji, co se v menu skutecne zobrazi a v jakem poradi.
         self.main_menu_items = ["Emotes", "Settings", "Debug"]
         self.emotes_menu_items = ["Gif", "Clock", "Cross", "Open eye", "Sleep", "Dice", "Back", "test3", "test4", "test5"]
         self.settings_menu_items = ["Display","Boop", "Mic", "Blink", "Accelerometer","Wifi", "Verbose", "Back"]
@@ -49,14 +52,15 @@ class UI():
         self.needs_render = True
 
     def _consume_api_call(self, server: ServerClass, expected_value):
-        """Consume one pending API command when it matches the expected value."""
+        """Spotrebuje jednu cekajici HTTP akci, pokud odpovida ocekavani."""
         if server is None or server.api_call != expected_value:
             return False
         server.api_call = ""
         return True
 
     def _move_selection(self, index_name, offset_name, items, step):
-        """Move one list selection cursor and keep the visible window in sync."""
+        """Posune kurzor v seznamu a udrzi spravny scroll viditelne casti."""
+        # Vyber se pohybuje cyklicky od konce zase na zacatek.
         selected_index = (getattr(self, index_name) + step) % len(items)
         setattr(self, index_name, selected_index)
         setattr(
@@ -71,7 +75,7 @@ class UI():
         self.needs_render = True
 
     def _open_main_selected_item(self):
-        """Open the currently selected item from the main menu."""
+        """Otevre vybranou polozku z hlavniho menu."""
         selected_item = self.main_menu_items[self.main_selected_index]
         if selected_item == "Emotes":
             self.active_screen = SCREEN_EMOTES_MENU
@@ -84,7 +88,7 @@ class UI():
         self.needs_render = True
 
     def _open_selected_emote(self):
-        """Open the selected emote item or go back to the main menu."""
+        """Otevre vybrany emote nebo se vrati do hlavniho menu."""
         selected_item = self.emotes_menu_items[self.emotes_selected_index]
         if selected_item == "Back":
             self.active_screen = SCREEN_MAIN_MENU
@@ -94,7 +98,7 @@ class UI():
         self.needs_render = True
 
     def _select_setting_item(self):
-        """Handle confirmation on the settings menu."""
+        """Zpracuje potvrzeni na polozce v menu nastaveni."""
         selected_item = self.settings_menu_items[self.settings_selected_index]
         if selected_item == "Back":
             self.active_screen = SCREEN_MAIN_MENU
@@ -105,7 +109,7 @@ class UI():
         return EVENT_SETTING_SELECTED, selected_item
 
     def _return_from_overlay_screen(self):
-        """Return from detail/debug screens back to their parent menu."""
+        """Vrati uzivatele z detailni nebo debug obrazovky zpet do menu."""
         if self.active_screen == SCREEN_MAIN_SCREEN:
             self.active_screen = SCREEN_MAIN_MENU
         elif self.active_screen == SCREEN_EMOTE_DETAIL:
@@ -115,7 +119,8 @@ class UI():
         self.needs_render = True
 
     def handle_input(self, server:ServerClass ,confirm_click, next_click, prev_click=False, ):
-        """Update menu state from button clicks and return optional events."""
+        """Zpracuje tlacitka nebo HTTP prikazy a vrati pripadnou UI udalost."""
+        # Chovani zavisi na tom, ktera obrazovka je prave otevrena.
         if self.active_screen == SCREEN_MAIN_MENU:
             if prev_click or self._consume_api_call(server, "up"):
                 self._move_selection(
@@ -180,6 +185,7 @@ class UI():
             return None
         
         if self.active_screen == SCREEN_DEBUG_MENU:
+            # Debug obrazovka nic nevybira. Jakykoliv vstup ji jen zavre.
             if (
                 prev_click
                 or next_click
@@ -202,32 +208,33 @@ class UI():
         return None
 
     def set_setting_value(self, name, value):
-        """Update one rendered setting value and request a redraw if changed."""
+        """Aktualizuje jednu zobrazovanou hodnotu nastaveni."""
         if self.setting_values.get(name) != value:
             self.setting_values[name] = value
             self.needs_render = True
 
     def set_clock_text(self, value):
-        """Update the rendered clock value and redraw only when it changes."""
+        """Aktualizuje zobrazeny cas a prekresli UI jen pri zmene."""
         if self.clock_text != value:
             self.clock_text = value
             self.needs_render = True
 
     def set_debug_lines(self, lines):
-        """Update the debug screen rows and redraw only when they change."""
+        """Aktualizuje radky debug obrazovky a prekresli je jen pri zmene."""
         normalized_lines = [str(line) for line in lines]
         if self.debug_lines != normalized_lines:
             self.debug_lines = normalized_lines
             self.needs_render = True
 
     def get_active_menu_emote(self):
-        """Return the currently opened emote detail or None outside that screen."""
+        """Vrati emote otevreny v detailu nebo `None` mimo tuto obrazovku."""
         if self.active_screen == SCREEN_EMOTE_DETAIL:
             return self.selected_emote
         return None
 
     def get_follow_scroll_offset(self, selected_index, current_offset, item_count):
-        """Keep the selected row inside the visible list window."""
+        """Spocita scroll tak, aby vybrany radek zustal ve viditelne casti."""
+        # Kdyz se seznam vejde na obrazovku cely, scroll neni potreba.
         if item_count <= MAX_VISIBLE_LIST_ROWS:
             return 0
 
@@ -246,7 +253,7 @@ class UI():
         return current_offset
 
     def get_visible_items(self, items, selected_index, scroll_offset):
-        """Return the current visible list window and its effective offset."""
+        """Vrati aktualne viditelnou cast seznamu a jeji scroll offset."""
         if len(items) <= MAX_VISIBLE_LIST_ROWS:
             return items, 0
 
@@ -267,7 +274,8 @@ class UI():
         return visible_items, scroll_offset
 
     def render_ui(self):
-        """Render the current menu or selected screen onto the OLED."""
+        """Prekresli aktualni OLED obrazovku jen kdyz je to potreba."""
+        # OLED se neprekresluje zbytecne v kazde iteraci, jen pri zmene stavu.
         if not self.needs_render:
             return
 
@@ -287,7 +295,7 @@ class UI():
         self.needs_render = False
 
     def render_menu(self):
-        """Render the top-level navigation menu."""
+        """Vykresli hlavni menu."""
         self.main_scroll_offset = self.render_selectable_list(
             title="Menu",
             items=self.main_menu_items,
@@ -296,11 +304,11 @@ class UI():
         )
 
     def render_main(self):
-        """Render the placeholder main screen content."""
+        """Vykresli jednoduchou hlavni obrazovku."""
         self.render_screen_text("Main\nPREV/NEXT=BACK")
 
     def render_settings(self):
-        """Render the settings submenu."""
+        """Vykresli menu nastaveni s aktualnimi ON/OFF hodnotami."""
         lines = ["Settings"]
         visible_items, self.settings_scroll_offset = self.get_visible_items(
             self.settings_menu_items,
@@ -311,6 +319,7 @@ class UI():
         for offset_index, item in enumerate(visible_items):
             index = self.settings_scroll_offset + offset_index
             prefix = ">" if index == self.settings_selected_index else " "
+            # V menu nastaveni se u kazde polozky zobrazuje i aktualni stav.
             if item == "Back":
                 lines.append(f"{prefix} {item}")
             else:
@@ -320,7 +329,7 @@ class UI():
         self.render_screen_text("\n".join(lines))
 
     def render_emotes(self):
-        """Render the emotes submenu."""
+        """Vykresli seznam dostupnych emote."""
         self.emotes_scroll_offset = self.render_selectable_list(
             title="Emotes",
             items=self.emotes_menu_items,
@@ -329,17 +338,17 @@ class UI():
         )
 
     def render_emote_detail(self):
-        """Render the currently selected emote detail screen."""
+        """Vykresli detail aktualne vybraneho emote."""
         self.render_screen_text(f"Emote:\n{self.selected_emote}\nPREV/NEXT=BACK")
 
     def render_debug(self):
-        """Render the current debug information on the OLED."""
+        """Vykresli debug informace na OLED."""
         lines = ["Debug"]
         lines.extend(self.debug_lines[:MAX_VISIBLE_LIST_ROWS])
         self.render_screen_text("\n".join(lines))
 
     def render_selectable_list(self, title, items, selected_index, scroll_offset=0):
-        """Render a simple selectable list with the current cursor highlighted."""
+        """Vykresli jednoduchy seznam se zvyraznenou vybranou polozkou."""
         lines = [title]
         visible_items, scroll_offset = self.get_visible_items(
             items,
@@ -356,10 +365,11 @@ class UI():
         return scroll_offset
 
     def render_screen_text(self, text):
-        """Render one OLED screen with a top-right clock and body content."""
+        """Vykresli textovou OLED obrazovku s hodinami vpravo nahore."""
         blocks = []
         lines = str(text).split("\n")
 
+        # Prvni radek se zkracuje, aby se neprekryl s hodinami vpravo.
         for index, line in enumerate(lines):
             if index == 0:
                 line = self.fit_first_line(line)
@@ -369,11 +379,11 @@ class UI():
         self.display.show_text_blocks(blocks, clear=True)
 
     def get_clock_x(self):
-        """Return the x coordinate needed to right-align the current clock text."""
+        """Vrati x souradnici pro zarovnani hodin doprava."""
         return self.display.width - (len(self.clock_text) * CHAR_WIDTH)
 
     def fit_first_line(self, text):
-        """Trim the first row so it does not overlap the clock area."""
+        """Zkrati prvni radek tak, aby nelezl do oblasti hodin."""
         max_width = self.get_clock_x() - CLOCK_PADDING
         max_chars = max(0, max_width // CHAR_WIDTH)
         return str(text)[:max_chars]

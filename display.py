@@ -1,5 +1,6 @@
-"""Helpers for creating regions on the RGB matrix and drawing BMP content."""
+"""Program vytvari regiony RGB matice a prekresluje do nich bitmapy a GIF snimky."""
 
+# Tato vrstva prevadi assety a bitmapy do male lokalni palety RGB matice.
 import board
 import displayio
 import framebufferio
@@ -17,17 +18,17 @@ PALETTE[2] = 0x050505
 PALETTE[3] = 0x020202
 
 
-
 class Display:
-    """Simple wrapper around the RGB matrix display."""
+    """Obsluhuje HUB75 matici a jeji rozdeleni na vykreslovaci oblasti."""
 
     def __init__(self, width=DISPLAY_WIDTH, height=DISPLAY_HEIGHT, bit_depth=BIT_DEPTH):
-        """Initialize the physical display and root group."""
+        """Inicializuje fyzickou RGB matici a korenovou `displayio` groupu."""
         self.width = width
         self.height = height
         self.bit_depth = bit_depth
         self.matrix_groups = []
 
+        # Pri znovuvytvoreni displeje se musi nejdriv uvolnit predchozi instance.
         displayio.release_displays()
         matrix = rgbmatrix.RGBMatrix(
             width=self.width,
@@ -52,13 +53,15 @@ class Display:
             output_enable_pin=board.MTX_OE,
         )
 
+        # `auto_refresh=False` nechava aktualizaci plne pod kontrolou hlavni smycky.
         self.window = framebufferio.FramebufferDisplay(matrix, auto_refresh=False)
         self.group = displayio.Group()
         self.window.root_group = self.group
         self.window.refresh()
 
     def create_matrix(self, name, position_x, position_y, matrix_width, matrix_height):
-        """Create a bitmap-backed matrix region on the display."""
+        """Vytvori jednu bitmapovou oblast na RGB matici."""
+        # Kazdy region ma vlastni bitmapu, ale vsechny regiony sdili jednu root groupu.
         bitmap = displayio.Bitmap(matrix_width, matrix_height, len(PALETTE))
         tile = displayio.TileGrid(
             bitmap,
@@ -80,7 +83,7 @@ class Display:
         return matrix
 
     def to_bitmap(self, matrix, color_count=len(PALETTE)):
-        """Convert a 2D list of pixels into a displayio bitmap."""
+        """Prevede 2D seznam pixelu na `displayio.Bitmap`."""
         height = len(matrix)
         width = len(matrix[0])
         bitmap = displayio.Bitmap(width, height, color_count)
@@ -95,15 +98,16 @@ class Display:
         return bitmap
 
     def update_matrix(self, matrix_group, matrix):
-        """Copy a 2D list of pixels into an existing matrix region."""
+        """Prepise obsah existujici oblasti pixely z 2D seznamu."""
         target_width = matrix_group["width"]
         target_height = matrix_group["height"]
 
-        # Smazat starý obsah, aby po menším obrázku nezůstaly artefakty.
+        # Smaze predchozi obsah, aby po mensim obrazku nezustaly artefakty.
         matrix_group["bitmap"].fill(0)
 
         copy_height = min(len(matrix), target_height)
 
+        # Kopiruje se jen oblast, ktera se realne vejde do cilove bitmapy.
         for y in range(copy_height):
             row = matrix[y]
             copy_width = min(len(row), target_width)
@@ -111,21 +115,20 @@ class Display:
             for x in range(copy_width):
                 matrix_group["bitmap"][x, y] = row[x]
 
-
     def set_pixel(self, matrix_group, x, y, value):
-        """Set a single pixel inside a matrix region."""
+        """Nastavi jeden pixel uvnitr dane oblasti."""
         matrix_group["bitmap"][x, y] = value
 
     def fill_matrix(self, matrix_group, value):
-        """Fill an entire matrix region with one color value."""
+        """Vyplni celou oblast jednou barvou."""
         matrix_group["bitmap"].fill(value)
 
     def refresh(self):
-        """Push pending bitmap changes to the display."""
+        """Odesle zmeny bitmap do fyzickeho displeje."""
         self.window.refresh()
 
     def deinit(self):
-        """Release the RGB matrix display so it can be recreated later."""
+        """Uvolni RGB matici tak, aby sla pozdeji znovu vytvorit."""
         if getattr(self, "window", None) is not None:
             try:
                 self.window.root_group = None
@@ -138,7 +141,7 @@ class Display:
         displayio.release_displays()
 
     def matrix_to_list(self, matrix_group):
-        """Return a matrix region as a nested Python list of palette indices."""
+        """Vrati oblast jako vnoreny seznam indexu palety."""
         bitmap = matrix_group["bitmap"]
         width = matrix_group["width"]
         height = matrix_group["height"]
@@ -149,7 +152,8 @@ class Display:
         ]
 
     def color_to_palette_index(self, color):
-        """Map an RGB color to the closest color in the display palette."""
+        """Najde v lokalni palete nejblizsi barvu k zadanemu RGB vstupu."""
+        # Matice pracuje s malou lokalni paletou, proto se hleda nejblizsi odstin.
         r = (color >> 16) & 0xFF
         g = (color >> 8) & 0xFF
         b = color & 0xFF
@@ -171,7 +175,7 @@ class Display:
         return best_index
 
     def rgb565_to_rgb888(self, color):
-        """Convert one RGB565 pixel to a 24-bit RGB integer."""
+        """Prevede jeden pixel z RGB565 na 24bit RGB."""
         r = (color >> 11) & 0x1F
         g = (color >> 5) & 0x3F
         b = color & 0x1F
@@ -183,7 +187,7 @@ class Display:
         return (r << 16) | (g << 8) | b
 
     def source_pixel_to_color(self, bitmap, pixel_shader, x, y):
-        """Read one source pixel as an RGB integer."""
+        """Precte zdrojovy pixel a vrati ho jako RGB barvu."""
         pixel_value = bitmap[x, y]
 
         if isinstance(pixel_shader, displayio.Palette):
@@ -192,7 +196,7 @@ class Display:
         return pixel_value
 
     def load_gif_frame_into_matrix(self, matrix_group, bitmap, pixel_shader=None):
-        """Copy the current GIF frame into a matrix region."""
+        """Nahraje aktualni GIF frame do dane oblasti RGB matice."""
         matrix_group["bitmap"].fill(0)
 
         copy_width = min(bitmap.width, matrix_group["width"])
@@ -202,7 +206,7 @@ class Display:
             for x in range(copy_width):
                 pixel_value = bitmap[x, y]
 
-                # gifio frames are RGB565 unless the GIF exposes a palette.
+                # GIF frame z `gifio` byva RGB565, pokud GIF nema vlastni paletu.
                 if pixel_shader is not None and isinstance(pixel_shader, displayio.Palette):
                     color = pixel_shader[pixel_value]
                 else:
@@ -211,7 +215,8 @@ class Display:
                 matrix_group["bitmap"][x, y] = self.color_to_palette_index(color)
 
     def load_bmp_into_matrix(self, matrix_group, source):
-        """Load a BMP path or in-memory bitmap and remap it into the current palette."""
+        """Nahraje BMP nebo pametovou bitmapu a premaluje ji do lokalni palety."""
+        # Zdroj muze byt bud cesta k souboru, nebo dvojice `(bitmap, pixel_shader)`.
         if isinstance(source, str):
             bitmap, pixel_shader = adafruit_imageload.load(
                 source,

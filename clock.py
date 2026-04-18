@@ -1,5 +1,6 @@
-"""RTC and NTP time helpers used by the device runtime."""
+"""Program synchronizuje RTC pres NTP a vraci cas pro OLED i RGB hodiny."""
 
+# Hodiny pracuji i bez site, ale pri dostupne Wi-Fi se pokusi o NTP synchronizaci.
 import time
 import rtc
 
@@ -9,14 +10,14 @@ DEBUG_DISABLE_SYNC = False
 
 
 class _FallbackNTP:
-    """Dummy NTP source used when real sync is disabled or unavailable."""
+    """Dodava nahradni datum, kdyz realny NTP neni dostupny."""
 
     def __init__(self):
         self.datetime = time.struct_time((1970, 1, 1, 0, 0, 0, 3, 1, -1))
 
 
 class Clock:
-    """Synchronize the RTC from NTP and expose formatted device time."""
+    """Synchronizuje RTC z NTP a formatuje cas pro zobrazeni v aplikaci."""
 
     def __init__(
         self,
@@ -26,7 +27,7 @@ class Clock:
         tz_offset=2,
         cache_seconds=3600,
     ):
-        """Store NTP settings and prepare fallback sync behavior."""
+        """Ulozi NTP nastaveni a pripravi fallback pro pripad chyby."""
         self.wifi = wifi_client
         self.server = server
         self.tz_offset = tz_offset
@@ -36,9 +37,10 @@ class Clock:
         self._fallback_ntp = _FallbackNTP()
 
     def sync_ntp(self):
-        """Synchronize the RTC using NTP or the fallback source."""
+        """Synchronizuje RTC pres NTP nebo pouzije fallback zdroj."""
         ntp_source = self._fallback_ntp
 
+        # Kdyz je sit dostupna, zkus se napojit na NTP a ziskat cerstvy cas.
         if not DEBUG_DISABLE_SYNC and self.wifi.pool is not None:
             try:
                 if self._ntp is None:
@@ -52,23 +54,24 @@ class Clock:
             except Exception:
                 ntp_source = self._fallback_ntp
 
+        # Vysledek se zapise do RTC, odkud pak cte zbytek aplikace.
         rtc.RTC().datetime = ntp_source.datetime
         self._synced = True
         return rtc.RTC().datetime
 
     def resync(self):
-        """Force a fresh RTC synchronization on the next call."""
+        """Vynuti nove NTP srovnani casu."""
         self._synced = False
         return self.sync_ntp()
 
     def get_datetime(self):
-        """Return the current RTC datetime, syncing first if needed."""
+        """Vrati aktualni datum a cas z RTC, pripadne nejdriv provede sync."""
         if not self._synced:
             return self.sync_ntp()
         return rtc.RTC().datetime
 
     def get_time(self):
-        """Return the current local time formatted as HH:MM."""
+        """Vrati aktualni cas ve formatu `HH:MM`."""
         self.get_datetime()
         now = time.localtime()
         return "{:02}:{:02}".format(now.tm_hour, now.tm_min)

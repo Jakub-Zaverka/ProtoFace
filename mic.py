@@ -1,5 +1,6 @@
-"""Helpers for reading and calibrating the onboard microphone."""
+"""Program cte analogovy mikrofon a vraci hlasitost proti klidove hladine."""
 
+# Mikrofon tu slouzi jen jako jednoducha detekce aktivity, ne pro zpracovani audia.
 import board
 import analogio
 import time
@@ -9,19 +10,21 @@ SAMPLE_SIZE = 20
 
 
 class Microphone:
-    """Read microphone amplitude relative to a calibrated idle level."""
+    """Meri odchylku mikrofonu od zkalibrovaneho klidoveho stavu."""
 
     def __init__(self):
-        """Initialize the analog microphone input and baseline value."""
+        """Inicializuje analogovy vstup mikrofonu a zmeri baseline."""
+        # Pri startu se ulozi klidova hodnota, ke ktere se pozdeji porovnava aktualni signal.
         self.mic = analogio.AnalogIn(MIC_PIN)
         self.avg_value = self.__calibrate__()
 
     def get_value(self):
-        """Return the current normalized microphone activity level."""
+        """Vrati aktualni normalizovanou uroven aktivity mikrofonu."""
+        # Vysledkem je jednoducha relativni odchylka vhodna pro prahovani mluvicich ust.
         return round(abs(self.mic.value - self.avg_value)/1000,2)
     
     def __calibrate__(self):
-        """Average several samples to determine the idle microphone level."""
+        """Zprumeruje vice vzorku a urci klidovou uroven mikrofonu."""
         total = 0
         for _ in range(SAMPLE_SIZE):
             total += self.mic.value

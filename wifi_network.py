@@ -1,5 +1,6 @@
-"""Simple Wi-Fi connection helper for the device runtime."""
+"""Program pripojuje zarizeni k Wi-Fi, nastavuje hostname a pripravuje mDNS."""
 
+# Sitova vrstva drzi credentials, pripojeni i sdileny socket pool pro dalsi moduly.
 import os
 
 import mdns
@@ -8,7 +9,7 @@ import wifi
 
 
 class Wifi:
-    """Store Wi-Fi credentials and open a shared socket pool."""
+    """Drzi Wi-Fi konfiguraci a otevira sdileny socket pool pro sitove sluzby."""
 
     def __init__(
         self,
@@ -18,7 +19,8 @@ class Wifi:
         backup_passw=None,
         hostname=None,
     ):
-        """Load Wi-Fi credentials from arguments or environment variables."""
+        """Nacte credentials z argumentu nebo z `settings.toml`."""
+        # Pri beznem behu se hodnoty berou z `settings.toml`, ale jde je predat i rucne.
         self.wifi_ssid = ssid if ssid is not None else os.getenv("HOME_WIFI_SSID")
         self.wifi_password = (
             passw if passw is not None else os.getenv("HOME_WIFI_PASSWORD")
@@ -43,11 +45,12 @@ class Wifi:
             raise ValueError("SSID not found in environment variables")
 
     def connect(self):
-        """Connect the radio and create a socket pool for network clients."""
+        """Pripoji radio k siti a vytvori socket pool pro klienty a server."""
         self.radio.hostname = self.hostname
         try:
             self.radio.connect(self.wifi_ssid, self.wifi_password)
         except ConnectionError:
+            # Kdyz selze hlavni sit, zkus zalozni credentials.
             print("Failed to connect to main WiFi with provided credentials")
             try:
                 self.radio.connect(self.backup_wifi, self.backup_wifi_passw)
@@ -55,13 +58,14 @@ class Wifi:
                 print("Failed to connect to backup WiFi with provided credentials")
                 raise
 
+        # Po uspesnem pripojeni se pripravi mDNS i socket pool pro HTTP server a NTP.
         self.mdns_server = mdns.Server(self.radio)
         self.mdns_server.hostname = self.hostname
         self.mdns_server.instance_name = self.hostname
         self.pool = socketpool.SocketPool(self.radio)
 
     def advertise_http(self, port):
-        """Advertise a future HTTP interface over mDNS."""
+        """Zainzeruje HTTP sluzbu pres mDNS."""
         if self.mdns_server is None:
             raise RuntimeError("Connect Wi-Fi before advertising services")
         self.mdns_server.advertise_service(
@@ -71,9 +75,9 @@ class Wifi:
         )
 
     def base_url(self, port):
-        """Return the preferred local URL for the device."""
+        """Vrati preferovanou lokalni URL s mDNS hostname."""
         return "http://{}.local:{}".format(self.hostname, port)
 
     def ip_url(self, port):
-        """Return the direct local IP URL for the device."""
+        """Vrati primou lokalni URL s IP adresou zarizeni."""
         return "http://{}:{}".format(self.radio.ipv4_address, port)
