@@ -232,6 +232,91 @@ class UI():
             return self.selected_emote
         return None
 
+    def get_http_menu_snapshot(self):
+        """Vrati strukturovany stav aktualniho UI pro HTTP/JSON API."""
+        visible_items = []
+        selected_index = None
+        scroll_offset = 0
+
+        if self.active_screen == SCREEN_MAIN_MENU:
+            visible_slice, scroll_offset = self.get_visible_items(
+                self.main_menu_items,
+                self.main_selected_index,
+                self.main_scroll_offset,
+            )
+            selected_index = self.main_selected_index
+            for offset_index, item in enumerate(visible_slice):
+                index = scroll_offset + offset_index
+                visible_items.append({
+                    "index": index,
+                    "label": item,
+                    "selected": index == self.main_selected_index,
+                })
+
+        elif self.active_screen == SCREEN_EMOTES_MENU:
+            visible_slice, scroll_offset = self.get_visible_items(
+                self.emotes_menu_items,
+                self.emotes_selected_index,
+                self.emotes_scroll_offset,
+            )
+            selected_index = self.emotes_selected_index
+            for offset_index, item in enumerate(visible_slice):
+                index = scroll_offset + offset_index
+                visible_items.append({
+                    "index": index,
+                    "label": item,
+                    "selected": index == self.emotes_selected_index,
+                })
+
+        elif self.active_screen == SCREEN_SETTINGS_MENU:
+            visible_slice, scroll_offset = self.get_visible_items(
+                self.settings_menu_items,
+                self.settings_selected_index,
+                self.settings_scroll_offset,
+            )
+            selected_index = self.settings_selected_index
+            for offset_index, item in enumerate(visible_slice):
+                index = scroll_offset + offset_index
+                entry = {
+                    "index": index,
+                    "label": item,
+                    "selected": index == self.settings_selected_index,
+                }
+                if item != "Back":
+                    entry["value"] = bool(self.setting_values.get(item, False))
+                visible_items.append(entry)
+
+        elif self.active_screen == SCREEN_EMOTE_DETAIL:
+            visible_items.append({
+                "index": 0,
+                "label": self.selected_emote,
+                "selected": True,
+            })
+
+        elif self.active_screen == SCREEN_DEBUG_MENU:
+            for index, line in enumerate(self.debug_lines[:MAX_VISIBLE_LIST_ROWS]):
+                visible_items.append({
+                    "index": index,
+                    "label": line,
+                    "selected": False,
+                })
+
+        return {
+            "active_screen": self.active_screen,
+            "main_selected_index": self.main_selected_index,
+            "emotes_selected_index": self.emotes_selected_index,
+            "settings_selected_index": self.settings_selected_index,
+            "main_scroll_offset": self.main_scroll_offset,
+            "emotes_scroll_offset": self.emotes_scroll_offset,
+            "settings_scroll_offset": self.settings_scroll_offset,
+            "selected_emote": self.selected_emote,
+            "clock_text": self.clock_text,
+            "selected_index": selected_index,
+            "visible_items": visible_items,
+            "scroll_offset": scroll_offset,
+            "controls": ["up", "ok", "down", "back", "refresh"],
+        }
+
     def get_follow_scroll_offset(self, selected_index, current_offset, item_count):
         """Spocita scroll tak, aby vybrany radek zustal ve viditelne casti."""
         # Kdyz se seznam vejde na obrazovku cely, scroll neni potreba.
@@ -387,3 +472,18 @@ class UI():
         max_width = self.get_clock_x() - CLOCK_PADDING
         max_chars = max(0, max_width // CHAR_WIDTH)
         return str(text)[:max_chars]
+
+    def go_back(self):
+        """Vrati se o jednu uroven vys v hierarchii menu."""
+        if self.active_screen in (
+            SCREEN_EMOTES_MENU,
+            SCREEN_SETTINGS_MENU,
+            SCREEN_DEBUG_MENU,
+            SCREEN_MAIN_SCREEN,
+        ):
+            self.active_screen = SCREEN_MAIN_MENU
+        elif self.active_screen == SCREEN_EMOTE_DETAIL:
+            self.active_screen = SCREEN_EMOTES_MENU
+        else:
+            self.active_screen = SCREEN_MAIN_MENU
+        self.needs_render = True

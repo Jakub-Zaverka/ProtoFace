@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Matrix Portal Menu</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3f0e8;
+      --panel: #fffaf0;
+      --ink: #1f1a14;
+      --muted: #6c6257;
+      --accent: #c84f2f;
+      --accent-dark: #9f3f26;
+      --border: #d9cdbf;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top, #fffdf8 0%, rgba(255, 253, 248, 0) 30%),
+        linear-gradient(180deg, #e8dfd1 0%, var(--bg) 100%);
+      color: var(--ink);
+      display: grid;
+      place-items: center;
+      padding: 16px;
+    }
+
+    .app {
+      width: min(100%, 420px);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 18px 40px rgba(76, 53, 28, 0.12);
+      overflow: hidden;
+    }
+
+    .header {
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, #fffdf9 0%, #f7efe2 100%);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.1;
+    }
+
+    .sub {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      padding: 16px;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid var(--accent-dark);
+      background: var(--accent);
+      color: #fff;
+      border-radius: 8px;
+      padding: 12px 10px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: #fff;
+      color: var(--accent-dark);
+      border-color: var(--border);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .status {
+      padding: 0 16px 16px;
+      color: var(--muted);
+      font-size: 13px;
+      min-height: 18px;
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      padding: 0 16px 16px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .meta div {
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    .menu-list {
+      margin: 0;
+      padding: 16px;
+      border-top: 1px solid var(--border);
+      background: #fff;
+      list-style: none;
+      min-height: 260px;
+    }
+
+    .menu-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      font-size: 15px;
+    }
+
+    .menu-item + .menu-item {
+      margin-top: 8px;
+    }
+
+    .menu-item.selected {
+      border-color: #f0b6a3;
+      background: #fff2ed;
+    }
+
+    .menu-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .marker {
+      color: var(--accent);
+      font-weight: 700;
+      width: 10px;
+      text-align: center;
+      flex: 0 0 auto;
+    }
+
+    .value {
+      color: var(--muted);
+      font-size: 13px;
+      flex: 0 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <h1>Matrix Portal</h1>
+      <div class="sub">Webove ovladani OLED menu</div>
+    </header>
+
+    <section class="controls">
+      <button type="button" data-action="up">Up</button>
+      <button type="button" data-action="ok">OK</button>
+      <button type="button" data-action="down">Down</button>
+      <button type="button" class="secondary" data-action="back">Back</button>
+      <button type="button" class="secondary" data-action="menu">Refresh</button>
+    </section>
+
+    <div class="status" id="status">Pripojuji se...</div>
+    <section class="meta">
+      <div id="screen">Screen: -</div>
+      <div id="clock">Clock: --:--</div>
+    </section>
+    <ul class="menu-list" id="menu"></ul>
+  </main>
+
+  <script>
+    const statusNode = document.getElementById("status");
+    const menuNode = document.getElementById("menu");
+    const screenNode = document.getElementById("screen");
+    const clockNode = document.getElementById("clock");
+
+    function renderMenu(snapshot) {
+      screenNode.textContent = "Screen: " + (snapshot.active_screen || "-");
+      clockNode.textContent = "Clock: " + (snapshot.clock_text || "--:--");
+
+      menuNode.innerHTML = "";
+
+      const items = Array.isArray(snapshot.visible_items) ? snapshot.visible_items : [];
+      for (const item of items) {
+        const row = document.createElement("li");
+        row.className = "menu-item" + (item.selected ? " selected" : "");
+
+        const label = document.createElement("div");
+        label.className = "menu-label";
+
+        const marker = document.createElement("span");
+        marker.className = "marker";
+        marker.textContent = item.selected ? ">" : "";
+
+        const text = document.createElement("span");
+        text.textContent = item.label || "";
+
+        label.append(marker, text);
+        row.appendChild(label);
+
+        if (typeof item.value === "boolean") {
+          const value = document.createElement("span");
+          value.className = "value";
+          value.textContent = item.value ? "ON" : "OFF";
+          row.appendChild(value);
+        }
+
+        menuNode.appendChild(row);
+      }
+
+      if (!items.length) {
+        const empty = document.createElement("li");
+        empty.className = "menu-item";
+        empty.textContent = "Zadne polozky";
+        menuNode.appendChild(empty);
+      }
+    }
+
+    async function requestMenu(path) {
+      statusNode.textContent = "Nacitam...";
+      try {
+        const response = await fetch(path, { cache: "no-store" });
+        const data = await response.json();
+        renderMenu(data);
+        statusNode.textContent = "Aktualizovano";
+      } catch (error) {
+        statusNode.textContent = "Chyba spojeni";
+        menuNode.innerHTML = "";
+        const row = document.createElement("li");
+        row.className = "menu-item";
+        row.textContent = String(error);
+        menuNode.appendChild(row);
+      }
+    }
+
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-action]");
+      if (!button) {
+        return;
+      }
+
+      const action = button.getAttribute("data-action");
+      const path = action === "menu" ? "/api/menu" : "/api/action/" + action;
+      requestMenu(path);
+    });
+
+    requestMenu("/api/menu");
+  </script>
+</body>
+</html>

@@ -59,6 +59,7 @@ whole_matrix = None
 sys_log = []
 logger = None
 server = None
+ui = None
 
 
 class ListHandler(logging.Handler):
@@ -142,6 +143,9 @@ def start_network_services():
     wifi.advertise_http(80)
     if server is None:
         server = ServerClass(wifi)
+    if ui is not None:
+        server.set_menu_action_handler(handle_http_menu_action)
+        server.set_menu_snapshot(refresh_ui_snapshot(ui))
     print("HTTP server available at {}".format(wifi.base_url(80)))
     print("HTTP server available at {}".format(wifi.ip_url(80)))
 
@@ -402,6 +406,79 @@ def sync_ui_settings(ui):
         ui.set_setting_value(setting_name, setting_value)
 
 
+def refresh_ui_snapshot(ui):
+    """Vrati aktualni HTTP snapshot UI nebo `None`, pokud UI neni aktivni."""
+    if ui is None:
+        return None
+
+    sync_ui_settings(ui)
+    ui.set_clock_text(get_clock_text())
+    return ui.get_http_menu_snapshot()
+
+
+def process_ui_inputs(ui, server, *, confirm_click=False, next_click=False, prev_click=False):
+    """Zpracuje jednu sadu UI vstupu a vrati aktivni menu emote a zmenene nastaveni."""
+    if ui is None:
+        return None, None
+
+    sync_ui_settings(ui)
+    ui.set_clock_text(get_clock_text())
+    ui.set_debug_lines([
+        "Acc: --",
+        "Mic: --",
+        "APDS: --",
+    ])
+
+    ui_event = ui.handle_input(
+        confirm_click=confirm_click,
+        next_click=next_click,
+        prev_click=prev_click,
+        server=server
+    )
+    active_menu_emote = ui.get_active_menu_emote()
+
+    toggled_setting = handle_ui_event(ui_event)
+    if toggled_setting is not None and toggled_setting == "Blink" and face_emotes is not None:
+        face_emotes.blink_enabled = BLINK_ON
+
+    sync_ui_settings(ui)
+    ui.render_ui()
+    return active_menu_emote, toggled_setting
+
+
+def handle_http_menu_action(action):
+    """Zpracuje HTTP menu akci synchronne a vrati aktualizovany snapshot menu."""
+    if action == "back":
+        if ui is not None:
+            ui.go_back()
+            sync_ui_settings(ui)
+            ui.render_ui()
+        if server is not None:
+            snapshot = refresh_ui_snapshot(ui)
+            server.set_menu_snapshot(snapshot)
+            return snapshot
+        return None
+
+    confirm_click = action == "ok"
+    next_click = action == "down"
+    prev_click = action == "up"
+
+    process_ui_inputs(
+        ui,
+        server,
+        confirm_click=confirm_click,
+        next_click=next_click,
+        prev_click=prev_click,
+    )
+
+    if server is not None:
+        snapshot = refresh_ui_snapshot(ui)
+        server.set_menu_snapshot(snapshot)
+        return snapshot
+
+    return None
+
+
 # Casove konstanty pro automaticke reakce obliceje.
 BLINK_TIME_SET = 10
 BOOP_TIMER = 5
@@ -441,6 +518,9 @@ if DISPLAY_ON:
 
 # OLED UI je volitelne. Kdyz neni OLED aktivni, zbytek runtime muze bezet dal.
 ui = UI(oled) if SSD1306_ON else None
+if server is not None and ui is not None:
+    server.set_menu_action_handler(handle_http_menu_action)
+    server.set_menu_snapshot(refresh_ui_snapshot(ui))
 prev_up_pressed = False
 prev_down_pressed = False
 prev_prev_pressed = False
@@ -534,6 +614,10 @@ while True:
 
     # 8) Obsluz HTTP server, pokud bezi.
     if server is not None:
+        if ui is not None:
+            server.set_menu_snapshot(ui.get_http_menu_snapshot())
+        else:
+            server.set_menu_snapshot(None)
         server.poll()
 
 
