@@ -330,6 +330,7 @@ class FaceEmoteController:
         self.eye_load_emote = create_gif_emote("/faces/giphy.gif", "load", loop=False)
         self.cross_emote = create_image_emote("/faces/cross.bmp", "cross")
         self.whole_dice_roll = create_gif_emote("/faces/dice.gif", "dice", loop=False)
+        self.color_test = create_image_emote("/faces/test_colors.bmp","color")
         # Template: sem pridej novy asset pro emote.
         # self.eye_happy_emote = create_image_emote("/faces/eye_happy.bmp", "happy")
         # self.mouth_smile_emote = create_image_emote("/faces/mouth_smile.bmp", "smile")
@@ -408,6 +409,13 @@ class FaceEmoteController:
             requests["eye"]["source"] = self.eye_boop_emote
             requests["eye"]["duration"] = 1
             requests["mouth"]["source"] = self.mouth_speak_emote
+            requests["mouth"]["duration"] = 1
+            return True
+        
+        if active_menu_emote == "color":
+            requests["eye"]["source"] = self.color_test
+            requests["eye"]["duration"] = 1
+            requests["mouth"]["source"] = self.color_test
             requests["mouth"]["duration"] = 1
             return True
 

@@ -28,7 +28,7 @@ class UI():
         self.display = display
         # Tyto seznamy urcuji, co se v menu skutecne zobrazi a v jakem poradi.
         self.main_menu_items = ["Emotes", "Settings", "Debug"]
-        self.emotes_menu_items = ["Gif", "Clock", "Cross", "Open eye", "Sleep", "Dice", "Back", "test3", "test4", "test5"]
+        self.emotes_menu_items = ["Gif", "Clock", "Cross", "Open eye", "Sleep", "Dice", "Back", "color", "test4", "test5"]
         self.settings_menu_items = ["Display","Boop", "Mic", "Blink", "Accelerometer","Wifi", "Verbose", "Back"]
         self.debug_lines = []
         self.setting_values = {
