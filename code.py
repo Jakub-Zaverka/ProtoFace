@@ -5,6 +5,7 @@ import microcontroller
 import os
 import time
 import adafruit_logging as logging
+import display as display_module
 from display import Display
 from accelerometer import Accelerometer
 from mic import Microphone
@@ -313,6 +314,13 @@ def toggle_setting(setting_name):
         persist_runtime_setting(setting_name, BLINK_ON)
         return setting_name
 
+    if setting_name == "Brightness":
+        display_module.cycle_brightness_scale()
+        if DISPLAY_ON:
+            shutdown_display_stack()
+            initialize_display_stack()
+        return setting_name
+
     if setting_name == "Wifi":
         # Vypnuti Wi-Fi zastavi HTTP server, zapnuti udela connect, sync hodin a start API.
         if WIFI_ON:
@@ -384,6 +392,7 @@ def get_setting_values():
         "Display": DISPLAY_ON,
         "Boop": APDS_ON,
         "Blink": BLINK_ON,
+        "Brightness": display_module.get_brightness_scale(),
         "Wifi": WIFI_ON,
         "Accelerometer": ACCELEROMETER_ON,
         "Verbose": VERBOSE,

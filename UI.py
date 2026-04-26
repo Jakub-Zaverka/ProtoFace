@@ -29,7 +29,7 @@ class UI():
         # Tyto seznamy urcuji, co se v menu skutecne zobrazi a v jakem poradi.
         self.main_menu_items = ["Emotes", "Settings", "Debug"]
         self.emotes_menu_items = ["Gif", "Clock", "Cross", "Open eye", "Sleep", "Dice", "Back", "color", "test4", "test5"]
-        self.settings_menu_items = ["Display","Boop", "Mic", "Blink", "Accelerometer","Wifi", "Verbose", "Back"]
+        self.settings_menu_items = ["Display", "Brightness", "Boop", "Mic", "Blink", "Accelerometer", "Wifi", "Verbose", "Back"]
         self.debug_lines = []
         self.setting_values = {
             "Display": False,
@@ -39,6 +39,7 @@ class UI():
             "Verbose": False,
             "Mic": False,
             "Blink": False,
+            "Brightness": 0.5,
         }
         self.main_selected_index = 0
         self.emotes_selected_index = 0
@@ -283,7 +284,11 @@ class UI():
                     "selected": index == self.settings_selected_index,
                 }
                 if item != "Back":
-                    entry["value"] = bool(self.setting_values.get(item, False))
+                    entry["value"] = self.setting_values.get(item, False)
+                    entry["display_value"] = self.format_setting_value(
+                        item,
+                        self.setting_values.get(item, False),
+                    )
                 visible_items.append(entry)
 
         elif self.active_screen == SCREEN_EMOTE_DETAIL:
@@ -393,7 +398,7 @@ class UI():
         self.render_screen_text("Main\nPREV/NEXT=BACK")
 
     def render_settings(self):
-        """Vykresli menu nastaveni s aktualnimi ON/OFF hodnotami."""
+        """Vykresli menu nastaveni s aktualnimi hodnotami."""
         lines = ["Settings"]
         visible_items, self.settings_scroll_offset = self.get_visible_items(
             self.settings_menu_items,
@@ -408,10 +413,16 @@ class UI():
             if item == "Back":
                 lines.append(f"{prefix} {item}")
             else:
-                value = "ON" if self.setting_values.get(item, False) else "OFF"
+                value = self.format_setting_value(item, self.setting_values.get(item, False))
                 lines.append(f"{prefix} {item}: {value}")
 
         self.render_screen_text("\n".join(lines))
+
+    def format_setting_value(self, name, value):
+        """Prevede interní hodnotu nastaveni na text pro OLED a web."""
+        if name == "Brightness":
+            return "{:.1f}".format(float(value))
+        return "ON" if bool(value) else "OFF"
 
     def render_emotes(self):
         """Vykresli seznam dostupnych emote."""

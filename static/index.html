@@ -216,10 +216,12 @@
         label.append(marker, text);
         row.appendChild(label);
 
-        if (typeof item.value === "boolean") {
+        if (typeof item.value === "boolean" || typeof item.display_value === "string") {
           const value = document.createElement("span");
           value.className = "value";
-          value.textContent = item.value ? "ON" : "OFF";
+          value.textContent = typeof item.display_value === "string"
+            ? item.display_value
+            : (item.value ? "ON" : "OFF");
           row.appendChild(value);
         }
 

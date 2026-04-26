@@ -16,6 +16,25 @@ RGB565_CONVERTER = displayio.ColorConverter(
 )
 SWAP_GREEN_BLUE = True
 BRIGHTNESS_SCALE = 0.5
+BRIGHTNESS_STEPS = (0.3, 0.4, 0.5, 0.7, 1.0)
+
+
+def get_brightness_scale():
+    """Vrati aktualni globalni faktor jasu RGB matice."""
+    return BRIGHTNESS_SCALE
+
+
+def cycle_brightness_scale():
+    """Posune globalni jas na dalsi preddefinovany krok."""
+    global BRIGHTNESS_SCALE
+
+    try:
+        current_index = BRIGHTNESS_STEPS.index(round(BRIGHTNESS_SCALE, 1))
+    except ValueError:
+        current_index = 0
+
+    BRIGHTNESS_SCALE = BRIGHTNESS_STEPS[(current_index + 1) % len(BRIGHTNESS_STEPS)]
+    return BRIGHTNESS_SCALE
 
 
 class Display:
