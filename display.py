@@ -14,6 +14,8 @@ RGB565_COLOR_COUNT = 65536
 RGB565_CONVERTER = displayio.ColorConverter(
     input_colorspace=displayio.Colorspace.RGB565
 )
+SWAP_GREEN_BLUE = True
+BRIGHTNESS_SCALE = 0.5
 
 
 class Display:
@@ -91,7 +93,7 @@ class Display:
                 raise ValueError("All rows in matrix must have the same width.")
 
             for x, value in enumerate(row):
-                bitmap[x, y] = value
+                bitmap[x, y] = self.normalize_color(value)
 
         return bitmap
 
@@ -111,15 +113,15 @@ class Display:
             copy_width = min(len(row), target_width)
 
             for x in range(copy_width):
-                matrix_group["bitmap"][x, y] = row[x]
+                matrix_group["bitmap"][x, y] = self.normalize_color(row[x])
 
     def set_pixel(self, matrix_group, x, y, value):
         """Nastavi jeden pixel uvnitr dane oblasti."""
-        matrix_group["bitmap"][x, y] = value
+        matrix_group["bitmap"][x, y] = self.normalize_color(value)
 
     def fill_matrix(self, matrix_group, value):
         """Vyplni celou oblast jednou barvou."""
-        matrix_group["bitmap"].fill(value)
+        matrix_group["bitmap"].fill(self.normalize_color(value))
 
     def refresh(self):
         """Odesle zmeny bitmap do fyzickeho displeje."""
@@ -155,7 +157,43 @@ class Display:
         g = (color >> 8) & 0xFF
         b = color & 0xFF
 
-        return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+        if SWAP_GREEN_BLUE:
+            g, b = b, g
+
+        rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+        return self.apply_brightness_rgb565(rgb565)
+
+    def apply_brightness_rgb565(self, color):
+        """Aplikuje globalni faktor jasu na RGB565 pixel."""
+        scale = BRIGHTNESS_SCALE
+        if scale >= 1.0:
+            return color
+        if scale <= 0.0:
+            return 0
+
+        r = (color >> 11) & 0x1F
+        g = (color >> 5) & 0x3F
+        b = color & 0x1F
+
+        r = min(31, max(0, int(r * scale)))
+        g = min(63, max(0, int(g * scale)))
+        b = min(31, max(0, int(b * scale)))
+
+        return (r << 11) | (g << 5) | b
+
+    def normalize_color(self, color):
+        """Prevede vstupni barvu na RGB565 a podpori i 24bit RGB cisla."""
+        if color is None:
+            return 0
+
+        color = int(color)
+        if color < 0:
+            return 0
+
+        if color <= 0xFFFF:
+            return self.apply_brightness_rgb565(color)
+
+        return self.rgb888_to_rgb565(color)
 
     def rgb565_to_rgb888(self, color):
         """Prevede jeden pixel z RGB565 na 24bit RGB."""
@@ -177,12 +215,58 @@ class Display:
             return self.rgb888_to_rgb565(pixel_shader[pixel_value])
 
         if isinstance(pixel_shader, displayio.ColorConverter):
-            return pixel_shader.convert(pixel_value)
+            return self.apply_brightness_rgb565(pixel_shader.convert(pixel_value))
 
         if pixel_value <= 0xFFFF:
-            return pixel_value
+            return self.apply_brightness_rgb565(pixel_value)
 
         return self.rgb888_to_rgb565(pixel_value)
+
+    def _load_24bit_bmp_rows(self, source):
+        """Nacte nepresne 24bit BMP a vrati jeho pixely jako RGB565 radky."""
+        with open(source, "rb") as file_handle:
+            header = file_handle.read(54)
+            if len(header) < 54 or header[0:2] != b"BM":
+                raise ValueError("Unsupported BMP header")
+
+            data_offset = int.from_bytes(header[10:14], "little")
+            width = self._read_signed_le32(header[18:22])
+            height = self._read_signed_le32(header[22:26])
+            bits_per_pixel = int.from_bytes(header[28:30], "little")
+            compression = int.from_bytes(header[30:34], "little")
+
+            if bits_per_pixel != 24 or compression != 0:
+                raise ValueError("BMP is not uncompressed 24-bit")
+
+            top_down = height < 0
+            width = abs(width)
+            height = abs(height)
+            row_stride = ((width * 3) + 3) & ~3
+
+            file_handle.seek(data_offset)
+            raw_rows = [file_handle.read(row_stride) for _ in range(height)]
+
+        rows = []
+        source_rows = raw_rows if top_down else reversed(raw_rows)
+        for raw_row in source_rows:
+            row = []
+            for x in range(width):
+                pixel_offset = x * 3
+                blue = raw_row[pixel_offset]
+                green = raw_row[pixel_offset + 1]
+                red = raw_row[pixel_offset + 2]
+                rgb888 = (red << 16) | (green << 8) | blue
+                row.append(self.rgb888_to_rgb565(rgb888))
+            rows.append(row)
+
+        return rows
+
+    def _read_signed_le32(self, raw_bytes):
+        """Vrati 32bit little-endian cislo se znamenkem bez `signed=True`."""
+        value = int.from_bytes(raw_bytes, "little")
+        if value & 0x80000000:
+            value -= 0x100000000
+        return value
 
     def load_gif_frame_into_matrix(self, matrix_group, bitmap, pixel_shader=None):
         """Nahraje aktualni GIF frame do dane oblasti RGB matice."""
@@ -201,12 +285,21 @@ class Display:
                         pixel_shader[pixel_value]
                     )
                 else:
-                    matrix_group["bitmap"][x, y] = pixel_value
+                    matrix_group["bitmap"][x, y] = self.apply_brightness_rgb565(
+                        pixel_value
+                    )
 
     def load_bmp_into_matrix(self, matrix_group, source):
         """Nahraje BMP nebo pametovou bitmapu a premaluje ji do RGB565 bitmapy."""
         # Zdroj muze byt bud cesta k souboru, nebo dvojice `(bitmap, pixel_shader)`.
         if isinstance(source, str):
+            if source.lower().endswith(".bmp"):
+                try:
+                    self.update_matrix(matrix_group, self._load_24bit_bmp_rows(source))
+                    return
+                except ValueError:
+                    pass
+
             bitmap, pixel_shader = adafruit_imageload.load(
                 source,
                 bitmap=displayio.Bitmap,
