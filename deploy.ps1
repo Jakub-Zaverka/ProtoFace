@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 $board = Get-Volume -FileSystemLabel "CIRCUITPY" | Select-Object -First 1
 
 if (-not $board) {
-    Write-Host "CIRCUITPY disk nebyl nalezen." -ForegroundColor Red
+    Write-Host "CIRCUITPY drive not found." -ForegroundColor Red
     exit 1
 }
 
@@ -12,21 +12,18 @@ $target = "$($board.DriveLetter):\"
 $source = Join-Path $PSScriptRoot "src"
 
 if (-not (Test-Path $source)) {
-    Write-Host "Složka src/ nebyla nalezena." -ForegroundColor Red
+    Write-Host "Folder src/ not found." -ForegroundColor Red
     exit 1
 }
 
-Write-Host "Zdroj: $source"
-Write-Host "Cíl:   $target"
-Write-Host ""
-Write-Host "Tento script bude kopírovat soubory na CIRCUITPY."
-Write-Host "Nic nebude mazat."
-Write-Host ""
+Write-Host "Source:   $source"
+Write-Host "Target:   $target"
 
-$confirm = Read-Host "Pokračovat? [y/N]"
+
+$confirm = Read-Host "Continue? [y/N]"
 
 if ($confirm -ne "y" -and $confirm -ne "Y") {
-    Write-Host "Zrušeno."
+    Write-Host "Cancelled."
     exit 0
 }
 
@@ -38,9 +35,9 @@ robocopy $source $target /E `
 # Robocopy má zvláštní exit kódy:
 # 0–7 znamená úspěch nebo běžné změny, 8+ znamená chyba
 if ($LASTEXITCODE -ge 8) {
-    Write-Host "Deploy selhal. Robocopy exit code: $LASTEXITCODE" -ForegroundColor Red
+    Write-Host "Deploy Failed. Robocopy exit code: $LASTEXITCODE" -ForegroundColor Red
     exit $LASTEXITCODE
 }
 
 Write-Host ""
-Write-Host "Deploy hotový." -ForegroundColor Green
+Write-Host "Deploy done." -ForegroundColor Green
