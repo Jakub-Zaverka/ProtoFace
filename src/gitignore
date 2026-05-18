@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.env
+settings.toml
+boot_out.txt
