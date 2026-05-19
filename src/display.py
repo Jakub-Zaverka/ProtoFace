@@ -9,7 +9,7 @@ import adafruit_imageload
 
 DISPLAY_WIDTH = 64
 DISPLAY_HEIGHT = 32
-BIT_DEPTH = 4
+BIT_DEPTH = 3
 RGB565_COLOR_COUNT = 65536
 RGB565_CONVERTER = displayio.ColorConverter(
     input_colorspace=displayio.Colorspace.RGB565
@@ -20,9 +20,9 @@ BRIGHTNESS_STEPS = (0.3, 0.4, 0.5, 0.7, 1.0)
 COLOR_EFFECT_NORMAL = "normal"
 COLOR_EFFECT_RAINBOW = "rainbow"
 
-RAINBOW_SPEED = 20
-RAINBOW_X_SCALE = 14
-RAINBOW_Y_SCALE = 22
+RAINBOW_SPEED = 8
+RAINBOW_X_SCALE = 10
+RAINBOW_Y_SCALE = 16
 
 
 def get_brightness_scale():
@@ -54,6 +54,7 @@ class Display:
         self.matrix_groups = []
         self.color_effect = COLOR_EFFECT_NORMAL
         self.effect_tick = 0
+        self.rainbow_wheel = self._create_rainbow_wheel()
 
         # Pri znovuvytvoreni displeje se musi nejdriv uvolnit predchozi instance.
         displayio.release_displays()
@@ -101,6 +102,7 @@ class Display:
             "name": name,
             "bitmap": bitmap,
             "base_bitmap": base_bitmap,
+            "active_pixels": [],
             "tile": tile,
             "position_x": position_x,
             "position_y": position_y,
@@ -134,6 +136,7 @@ class Display:
         # Smaze predchozi obsah, aby po mensim obrazku nezustaly artefakty.
         matrix_group["base_bitmap"].fill(0)
         matrix_group["bitmap"].fill(0)
+        matrix_group["active_pixels"] = []
 
         copy_height = min(len(matrix), target_height)
 
@@ -153,13 +156,22 @@ class Display:
         """Vyplni celou oblast jednou barvou."""
         color = self.normalize_color(value)
         matrix_group["base_bitmap"].fill(color)
+        if color == 0:
+            matrix_group["active_pixels"] = []
+            matrix_group["bitmap"].fill(0)
+        else:
+            matrix_group["active_pixels"] = [
+                (x, y)
+                for y in range(matrix_group["height"])
+                for x in range(matrix_group["width"])
+            ]
         self._render_effect_for_matrix(matrix_group)
 
     def refresh(self):
         """Odesle zmeny bitmap do fyzickeho displeje."""
         if self.color_effect == COLOR_EFFECT_RAINBOW:
             self.effect_tick = (self.effect_tick + 1) % 256
-            self._render_all_effects()
+            self._render_all_effects(visible_only=True)
         self.window.refresh()
 
     def set_color_effect(self, effect):
@@ -258,23 +270,32 @@ class Display:
         """Ulozi puvodni pixel a vykresli jeho aktualni efektovou podobu."""
         color = self.normalize_color(value)
         matrix_group["base_bitmap"][x, y] = color
+        if color != 0:
+            matrix_group["active_pixels"].append((x, y))
         matrix_group["bitmap"][x, y] = self._apply_color_effect(color, x, y)
 
-    def _render_all_effects(self):
+    def _render_all_effects(self, visible_only=False):
         """Prekresli vsechny regiony z ulozenych puvodnich pixelu."""
         for matrix_group in self.matrix_groups:
+            if visible_only and matrix_group["tile"].hidden:
+                continue
             self._render_effect_for_matrix(matrix_group)
 
     def _render_effect_for_matrix(self, matrix_group):
         """Prekresli jeden region podle aktualniho barevneho efektu."""
         base_bitmap = matrix_group["base_bitmap"]
         bitmap = matrix_group["bitmap"]
-        width = matrix_group["width"]
-        height = matrix_group["height"]
 
-        for y in range(height):
-            for x in range(width):
-                bitmap[x, y] = self._apply_color_effect(base_bitmap[x, y], x, y)
+        if self.color_effect == COLOR_EFFECT_RAINBOW:
+            for x, y in matrix_group["active_pixels"]:
+                if base_bitmap[x, y] == 0:
+                    bitmap[x, y] = 0
+                else:
+                    bitmap[x, y] = self._rainbow_rgb565(x, y)
+            return
+
+        for x, y in matrix_group["active_pixels"]:
+            bitmap[x, y] = base_bitmap[x, y]
 
     def _apply_color_effect(self, color, x, y):
         """Vrati pixel po aplikaci aktualniho efektu."""
@@ -282,6 +303,29 @@ class Display:
             return color
 
         return self._rainbow_rgb565(x, y)
+
+    def _create_rainbow_wheel(self):
+        """Predpocita jednu periodu rainbow barev v RGB565."""
+        wheel = []
+        for index in range(256):
+            pos = index
+            if pos < 85:
+                red = 255 - pos * 3
+                green = pos * 3
+                blue = 0
+            elif pos < 170:
+                pos -= 85
+                red = 0
+                green = 255 - pos * 3
+                blue = pos * 3
+            else:
+                pos -= 170
+                red = pos * 3
+                green = 0
+                blue = 255 - pos * 3
+
+            wheel.append(self.rgb888_to_rgb565((red << 16) | (green << 8) | blue))
+        return wheel
 
     def _rainbow_rgb565(self, x, y):
         """Vygeneruje RGB565 barvu z posunuteho color-wheel indexu."""
@@ -291,22 +335,7 @@ class Display:
             + self.effect_tick * RAINBOW_SPEED
         ) & 0xFF
 
-        if pos < 85:
-            red = 255 - pos * 3
-            green = pos * 3
-            blue = 0
-        elif pos < 170:
-            pos -= 85
-            red = 0
-            green = 255 - pos * 3
-            blue = pos * 3
-        else:
-            pos -= 170
-            red = pos * 3
-            green = 0
-            blue = 255 - pos * 3
-
-        return self.rgb888_to_rgb565((red << 16) | (green << 8) | blue)
+        return self.rainbow_wheel[pos]
 
     def source_pixel_to_rgb565(self, bitmap, pixel_shader, x, y):
         """Precte zdrojovy pixel a vrati ho jako RGB565."""
@@ -373,6 +402,7 @@ class Display:
         """Nahraje aktualni GIF frame do dane oblasti RGB matice."""
         matrix_group["base_bitmap"].fill(0)
         matrix_group["bitmap"].fill(0)
+        matrix_group["active_pixels"] = []
 
         copy_width = min(bitmap.width, matrix_group["width"])
         copy_height = min(bitmap.height, matrix_group["height"])

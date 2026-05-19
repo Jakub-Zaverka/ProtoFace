@@ -298,6 +298,8 @@ class FaceEmoteController:
         blink_time_set=10,
         emote_timer=20,
         boop_timer=5,
+        boop_rainbow_enabled=True,
+        rainbow_override_enabled=False,
         blink_emote_timer=None,
         verbose=False,
     ):
@@ -313,6 +315,8 @@ class FaceEmoteController:
         self.blink_time_set = blink_time_set
         self.emote_timer = emote_timer
         self.boop_timer = boop_timer
+        self.boop_rainbow_enabled = boop_rainbow_enabled
+        self.rainbow_override_enabled = rainbow_override_enabled
         self.blink_emote_timer = (
             blink_emote_timer
             if blink_emote_timer is not None
@@ -431,15 +435,6 @@ class FaceEmoteController:
         proximity_value=None,
     ):
         """Zpracuje vstupy a posune vsechny aktivni emote o jeden krok."""
-        active_effect = None
-        if active_menu_emote is not None:
-            active_effect = str(active_menu_emote).strip().lower()
-
-        if active_effect == "rainbow":
-            self.display.set_color_effect("rainbow")
-        else:
-            self.display.set_color_effect("normal")
-
         # Nejdriv se poskladaji pozadavky na jednotlive regiony pro tuto iteraci.
         requests = self._create_requests()
         menu_emote_active = self._apply_active_menu_emote(
@@ -466,6 +461,7 @@ class FaceEmoteController:
                 )
 
             self._set_face_hidden(self.whole_region["active"])
+            self._sync_color_effect()
             self.blink_time = 0
             return started
 
@@ -522,6 +518,7 @@ class FaceEmoteController:
             )
 
         self._set_face_hidden(self.whole_region["active"])
+        self._sync_color_effect()
 
         if any(started.values()) and get_emote_name(self.eye_region) != "blink":
             self.blink_time = 0
@@ -556,6 +553,31 @@ class FaceEmoteController:
     def is_boop_active(self):
         """Vrati `True`, kdyz je aktivni boop emote oka."""
         return get_emote_name(self.eye_region) == "boop"
+
+    def set_boop_rainbow_enabled(self, enabled):
+        """Zapne nebo vypne rainbow efekt navazany na boop."""
+        self.boop_rainbow_enabled = enabled
+        self._sync_color_effect()
+
+    def set_rainbow_override_enabled(self, enabled):
+        """Zapne nebo vypne rainbow efekt pro vsechny aktivni emote."""
+        self.rainbow_override_enabled = enabled
+        self._sync_color_effect()
+
+    def _sync_color_effect(self):
+        """Synchronizuje rainbow efekt podle boop a override nastaveni."""
+        if self.rainbow_override_enabled:
+            self.display.set_color_effect("rainbow")
+            return
+
+        if (
+            self.boop_rainbow_enabled
+            and self.is_boop_active()
+            and not self.whole_region["active"]
+        ):
+            self.display.set_color_effect("rainbow")
+        else:
+            self.display.set_color_effect("normal")
 
     def shutdown(self):
         """Uvolni aktivni prehravace driv, nez se vypne displej."""

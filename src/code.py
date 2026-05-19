@@ -21,11 +21,15 @@ from UI import UI
 from server import ServerClass
 
 # Identifikator a mapa bitu pro ulozeni runtime voleb do `microcontroller.nvm`.
-NVM_MAGIC = b"PFS1"
+NVM_MAGIC = b"PFS2"
+OLD_NVM_MAGIC = b"PFS1"
+NVM_FLAG_BYTES = 2
 LOG_BUFFER_SIZE = 100
 SETTING_ENV_KEYS = {
     "Accelerometer": "ACCELEROMETER_ON",
     "Boop": "APDS_ON",
+    "Boop Rainbow": "BOOP_RAINBOW_ON",
+    "Rainbow Override": "RAINBOW_OVERRIDE_ON",
     "Blink": "BLINK_ON",
     "Wifi": "WIFI_ON",
     "Verbose": "VERBOSE",
@@ -39,7 +43,9 @@ SETTING_BITS = {
     "WIFI_ON": 3,
     "VERBOSE": 4,
     "BLINK_ON": 5,
-    "DISPLAY_ON":6
+    "DISPLAY_ON": 6,
+    "BOOP_RAINBOW_ON": 7,
+    "RAINBOW_OVERRIDE_ON": 8
 }
 
 MIN_MOVEMENT = 1
@@ -79,18 +85,26 @@ class ListHandler(logging.Handler):
 
 def load_runtime_settings():
     """Nacte ulozene runtime prepinace z `microcontroller.nvm`."""
-    # Prvni byty NVM obsahuji hlavicku a jeden byte s bitovym polem prepinacu.
+    # Prvni byty NVM obsahuji hlavicku a bajty s bitovym polem prepinacu.
     if len(microcontroller.nvm) < len(NVM_MAGIC) + 1:
         return {}
 
-    raw = bytes(microcontroller.nvm[: len(NVM_MAGIC) + 1])
-    if raw[: len(NVM_MAGIC)] != NVM_MAGIC:
+    raw = bytes(microcontroller.nvm[: len(NVM_MAGIC) + NVM_FLAG_BYTES])
+    magic = raw[: len(NVM_MAGIC)]
+    if magic == NVM_MAGIC:
+        flag_bytes = raw[len(NVM_MAGIC): len(NVM_MAGIC) + NVM_FLAG_BYTES]
+    elif magic == OLD_NVM_MAGIC:
+        flag_bytes = raw[len(OLD_NVM_MAGIC): len(OLD_NVM_MAGIC) + 1]
+    else:
         return {}
 
-    flags = raw[len(NVM_MAGIC)]
     runtime_settings = {}
     for setting_key, bit_index in SETTING_BITS.items():
-        runtime_settings[setting_key] = bool(flags & (1 << bit_index))
+        byte_index = bit_index // 8
+        if byte_index >= len(flag_bytes):
+            continue
+        flags = flag_bytes[byte_index]
+        runtime_settings[setting_key] = bool(flags & (1 << (bit_index % 8)))
     return runtime_settings
 
 
@@ -128,6 +142,19 @@ WIFI_ON = read_bool_setting("WIFI_ON", True)
 VERBOSE = read_bool_setting("VERBOSE", False)
 BLINK_ON = read_bool_setting("BLINK_ON", True)
 DISPLAY_ON = read_bool_setting("DISPLAY_ON", True)
+BOOP_RAINBOW_ON = read_bool_setting("BOOP_RAINBOW_ON", True)
+RAINBOW_OVERRIDE_ON = read_bool_setting("RAINBOW_OVERRIDE_ON", False)
+RUNTIME_SETTINGS.update({
+    "ACCELEROMETER_ON": ACCELEROMETER_ON,
+    "MIC_ON": MIC_ON,
+    "APDS_ON": APDS_ON,
+    "WIFI_ON": WIFI_ON,
+    "VERBOSE": VERBOSE,
+    "BLINK_ON": BLINK_ON,
+    "DISPLAY_ON": DISPLAY_ON,
+    "BOOP_RAINBOW_ON": BOOP_RAINBOW_ON,
+    "RAINBOW_OVERRIDE_ON": RAINBOW_OVERRIDE_ON,
+})
 
 logger = logging.getLogger("runtime")
 logger.setLevel(logging.INFO)
@@ -153,20 +180,24 @@ def start_network_services():
 
 def persist_boolean_setting(key, value):
     """Ulozi jeden runtime prepinac do `microcontroller.nvm`."""
-    # Vsechny runtime volby se ukladaji jako bity v jednom byte.
-    if len(microcontroller.nvm) < len(NVM_MAGIC) + 1:
+    # Vsechny runtime volby se ukladaji jako bity v nekolika bajtech.
+    if len(microcontroller.nvm) < len(NVM_MAGIC) + NVM_FLAG_BYTES:
         if VERBOSE:
             print("microcontroller.nvm is too small for runtime settings")
         return False
 
     RUNTIME_SETTINGS[key] = value
-    flags = 0
+    flag_bytes = [0] * NVM_FLAG_BYTES
     for setting_key, bit_index in SETTING_BITS.items():
         if RUNTIME_SETTINGS.get(setting_key, False):
-            flags |= 1 << bit_index
+            byte_index = bit_index // 8
+            bit_offset = bit_index % 8
+            flag_bytes[byte_index] |= 1 << bit_offset
 
     try:
-        microcontroller.nvm[: len(NVM_MAGIC) + 1] = NVM_MAGIC + bytes([flags])
+        microcontroller.nvm[: len(NVM_MAGIC) + NVM_FLAG_BYTES] = (
+            NVM_MAGIC + bytes(flag_bytes)
+        )
     except (OSError, ValueError) as error:
         if VERBOSE:
             print(f"Failed to write runtime settings to NVM: {error}")
@@ -234,6 +265,8 @@ def initialize_display_stack():
         blink_time_set=BLINK_TIME_SET,
         emote_timer=EMOTE_TIMER,
         boop_timer=BOOP_TIMER,
+        boop_rainbow_enabled=BOOP_RAINBOW_ON,
+        rainbow_override_enabled=RAINBOW_OVERRIDE_ON,
         verbose=VERBOSE,
     )
     display.refresh()
@@ -290,6 +323,8 @@ def toggle_setting(setting_name):
     global mic
     global BLINK_ON
     global DISPLAY_ON
+    global BOOP_RAINBOW_ON
+    global RAINBOW_OVERRIDE_ON
     global display
     global face_emotes
     global server
@@ -307,6 +342,20 @@ def toggle_setting(setting_name):
         if APDS_ON and apds is None:
             apds = APDSSensor()
         persist_runtime_setting(setting_name, APDS_ON)
+        return setting_name
+
+    if setting_name == "Boop Rainbow":
+        BOOP_RAINBOW_ON = not BOOP_RAINBOW_ON
+        if face_emotes is not None:
+            face_emotes.set_boop_rainbow_enabled(BOOP_RAINBOW_ON)
+        persist_runtime_setting(setting_name, BOOP_RAINBOW_ON)
+        return setting_name
+
+    if setting_name == "Rainbow Override":
+        RAINBOW_OVERRIDE_ON = not RAINBOW_OVERRIDE_ON
+        if face_emotes is not None:
+            face_emotes.set_rainbow_override_enabled(RAINBOW_OVERRIDE_ON)
+        persist_runtime_setting(setting_name, RAINBOW_OVERRIDE_ON)
         return setting_name
 
     if setting_name == "Blink":
@@ -391,6 +440,8 @@ def get_setting_values():
     return {
         "Display": DISPLAY_ON,
         "Boop": APDS_ON,
+        "Boop Rainbow": BOOP_RAINBOW_ON,
+        "Rainbow Override": RAINBOW_OVERRIDE_ON,
         "Blink": BLINK_ON,
         "Brightness": display_module.get_brightness_scale(),
         "Wifi": WIFI_ON,
