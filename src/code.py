@@ -666,4 +666,4 @@ while True:
     prev_prev_pressed = prev_pressed
 
     # Kratke uspani drzi smycku stabilni a omezuje zbytecne pretizeni CPU.
-    time.sleep(0.001)
+    time.sleep(0.02)

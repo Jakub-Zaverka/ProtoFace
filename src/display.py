@@ -20,7 +20,7 @@ BRIGHTNESS_STEPS = (0.3, 0.4, 0.5, 0.7, 1.0)
 COLOR_EFFECT_NORMAL = "normal"
 COLOR_EFFECT_RAINBOW = "rainbow"
 
-RAINBOW_SPEED = 32
+RAINBOW_SPEED = 4
 
 
 def get_brightness_scale():

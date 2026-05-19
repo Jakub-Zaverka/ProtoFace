@@ -22,6 +22,7 @@ FONT_5X7 = {
 }
 
 BLINKING_SLOWER = 25
+BOOP_PROXIMITY_THRESHOLD = 40
 
 
 # Zakladni stavebni bloky pro regiony a jejich zdroje.
@@ -484,7 +485,7 @@ class FaceEmoteController:
             and not self.whole_region["active"]
             and requests["eye"]["source"] is None
         ):
-            if proximity_value > 200:
+            if proximity_value > BOOP_PROXIMITY_THRESHOLD:
                 requests["eye"]["source"] = self.eye_boop_emote
                 requests["eye"]["duration"] = self.boop_timer
 
