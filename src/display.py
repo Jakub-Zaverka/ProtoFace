@@ -17,6 +17,8 @@ RGB565_CONVERTER = displayio.ColorConverter(
 SWAP_GREEN_BLUE = True
 BRIGHTNESS_SCALE = 0.5
 BRIGHTNESS_STEPS = (0.3, 0.4, 0.5, 0.7, 1.0)
+COLOR_EFFECT_NORMAL = "normal"
+COLOR_EFFECT_RAINBOW = "rainbow"
 
 
 def get_brightness_scale():
@@ -46,6 +48,8 @@ class Display:
         self.height = height
         self.bit_depth = bit_depth
         self.matrix_groups = []
+        self.color_effect = COLOR_EFFECT_NORMAL
+        self.effect_tick = 0
 
         # Pri znovuvytvoreni displeje se musi nejdriv uvolnit predchozi instance.
         displayio.release_displays()
@@ -82,6 +86,7 @@ class Display:
         """Vytvori jednu bitmapovou oblast na RGB matici."""
         # Kazdy region ma vlastni RGB565 bitmapu, ale vsechny regiony sdili jednu root groupu.
         bitmap = displayio.Bitmap(matrix_width, matrix_height, RGB565_COLOR_COUNT)
+        base_bitmap = displayio.Bitmap(matrix_width, matrix_height, RGB565_COLOR_COUNT)
         tile = displayio.TileGrid(
             bitmap,
             pixel_shader=RGB565_CONVERTER,
@@ -91,6 +96,7 @@ class Display:
         matrix = {
             "name": name,
             "bitmap": bitmap,
+            "base_bitmap": base_bitmap,
             "tile": tile,
             "position_x": position_x,
             "position_y": position_y,
@@ -122,6 +128,7 @@ class Display:
         target_height = matrix_group["height"]
 
         # Smaze predchozi obsah, aby po mensim obrazku nezustaly artefakty.
+        matrix_group["base_bitmap"].fill(0)
         matrix_group["bitmap"].fill(0)
 
         copy_height = min(len(matrix), target_height)
@@ -132,19 +139,36 @@ class Display:
             copy_width = min(len(row), target_width)
 
             for x in range(copy_width):
-                matrix_group["bitmap"][x, y] = self.normalize_color(row[x])
+                self._set_base_pixel(matrix_group, x, y, row[x])
 
     def set_pixel(self, matrix_group, x, y, value):
         """Nastavi jeden pixel uvnitr dane oblasti."""
-        matrix_group["bitmap"][x, y] = self.normalize_color(value)
+        self._set_base_pixel(matrix_group, x, y, value)
 
     def fill_matrix(self, matrix_group, value):
         """Vyplni celou oblast jednou barvou."""
-        matrix_group["bitmap"].fill(self.normalize_color(value))
+        color = self.normalize_color(value)
+        matrix_group["base_bitmap"].fill(color)
+        self._render_effect_for_matrix(matrix_group)
 
     def refresh(self):
         """Odesle zmeny bitmap do fyzickeho displeje."""
+        if self.color_effect == COLOR_EFFECT_RAINBOW:
+            self.effect_tick = (self.effect_tick + 1) % 256
+            self._render_all_effects()
         self.window.refresh()
+
+    def set_color_effect(self, effect):
+        """Nastavi globalni barevny efekt pro vsechny regiony."""
+        if effect not in (COLOR_EFFECT_NORMAL, COLOR_EFFECT_RAINBOW):
+            raise ValueError("Unsupported color effect")
+        if self.color_effect == effect:
+            return
+
+        self.color_effect = effect
+        if effect == COLOR_EFFECT_RAINBOW:
+            self.effect_tick = 0
+        self._render_all_effects()
 
     def deinit(self):
         """Uvolni RGB matici tak, aby sla pozdeji znovu vytvorit."""
@@ -161,7 +185,7 @@ class Display:
 
     def matrix_to_list(self, matrix_group):
         """Vrati oblast jako vnoreny seznam RGB565 pixelu."""
-        bitmap = matrix_group["bitmap"]
+        bitmap = matrix_group["base_bitmap"]
         width = matrix_group["width"]
         height = matrix_group["height"]
 
@@ -226,6 +250,56 @@ class Display:
 
         return (r << 16) | (g << 8) | b
 
+    def _set_base_pixel(self, matrix_group, x, y, value):
+        """Ulozi puvodni pixel a vykresli jeho aktualni efektovou podobu."""
+        color = self.normalize_color(value)
+        matrix_group["base_bitmap"][x, y] = color
+        matrix_group["bitmap"][x, y] = self._apply_color_effect(color, x, y)
+
+    def _render_all_effects(self):
+        """Prekresli vsechny regiony z ulozenych puvodnich pixelu."""
+        for matrix_group in self.matrix_groups:
+            self._render_effect_for_matrix(matrix_group)
+
+    def _render_effect_for_matrix(self, matrix_group):
+        """Prekresli jeden region podle aktualniho barevneho efektu."""
+        base_bitmap = matrix_group["base_bitmap"]
+        bitmap = matrix_group["bitmap"]
+        width = matrix_group["width"]
+        height = matrix_group["height"]
+
+        for y in range(height):
+            for x in range(width):
+                bitmap[x, y] = self._apply_color_effect(base_bitmap[x, y], x, y)
+
+    def _apply_color_effect(self, color, x, y):
+        """Vrati pixel po aplikaci aktualniho efektu."""
+        if self.color_effect != COLOR_EFFECT_RAINBOW or color == 0:
+            return color
+
+        return self._rainbow_rgb565(x, y)
+
+    def _rainbow_rgb565(self, x, y):
+        """Vygeneruje RGB565 barvu z posunuteho color-wheel indexu."""
+        pos = (x * 6 + y * 10 + self.effect_tick * 4) & 0xFF
+
+        if pos < 85:
+            red = 255 - pos * 3
+            green = pos * 3
+            blue = 0
+        elif pos < 170:
+            pos -= 85
+            red = 0
+            green = 255 - pos * 3
+            blue = pos * 3
+        else:
+            pos -= 170
+            red = pos * 3
+            green = 0
+            blue = 255 - pos * 3
+
+        return self.rgb888_to_rgb565((red << 16) | (green << 8) | blue)
+
     def source_pixel_to_rgb565(self, bitmap, pixel_shader, x, y):
         """Precte zdrojovy pixel a vrati ho jako RGB565."""
         pixel_value = bitmap[x, y]
@@ -289,6 +363,7 @@ class Display:
 
     def load_gif_frame_into_matrix(self, matrix_group, bitmap, pixel_shader=None):
         """Nahraje aktualni GIF frame do dane oblasti RGB matice."""
+        matrix_group["base_bitmap"].fill(0)
         matrix_group["bitmap"].fill(0)
 
         copy_width = min(bitmap.width, matrix_group["width"])
@@ -300,13 +375,14 @@ class Display:
 
                 # GIF frame z `gifio` byva RGB565, pripadne se vezme barva z palety GIFu.
                 if pixel_shader is not None and isinstance(pixel_shader, displayio.Palette):
-                    matrix_group["bitmap"][x, y] = self.rgb888_to_rgb565(
-                        pixel_shader[pixel_value]
+                    self._set_base_pixel(
+                        matrix_group,
+                        x,
+                        y,
+                        pixel_shader[pixel_value],
                     )
                 else:
-                    matrix_group["bitmap"][x, y] = self.apply_brightness_rgb565(
-                        pixel_value
-                    )
+                    self._set_base_pixel(matrix_group, x, y, pixel_value)
 
     def load_bmp_into_matrix(self, matrix_group, source):
         """Nahraje BMP nebo pametovou bitmapu a premaluje ji do RGB565 bitmapy."""

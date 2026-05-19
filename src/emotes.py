@@ -430,6 +430,15 @@ class FaceEmoteController:
         proximity_value=None,
     ):
         """Zpracuje vstupy a posune vsechny aktivni emote o jeden krok."""
+        active_effect = None
+        if active_menu_emote is not None:
+            active_effect = str(active_menu_emote).strip().lower()
+
+        if active_effect == "rainbow":
+            self.display.set_color_effect("rainbow")
+        else:
+            self.display.set_color_effect("normal")
+
         # Nejdriv se poskladaji pozadavky na jednotlive regiony pro tuto iteraci.
         requests = self._create_requests()
         menu_emote_active = self._apply_active_menu_emote(
