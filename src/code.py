@@ -17,14 +17,17 @@ from wifi_network import Wifi
 from clock import Clock
 import emotes
 from UI import EVENT_SETTING_SELECTED
+from UI import SCREEN_DEBUG_MENU
 from UI import UI
 from server import ServerClass
+from performance import PerformanceMonitor
 
 # Identifikator a mapa bitu pro ulozeni runtime voleb do `microcontroller.nvm`.
 NVM_MAGIC = b"PFS2"
 OLD_NVM_MAGIC = b"PFS1"
 NVM_FLAG_BYTES = 2
 LOG_BUFFER_SIZE = 100
+DEBUG_UI_UPDATE_INTERVAL = 1.0
 SETTING_ENV_KEYS = {
     "Accelerometer": "ACCELEROMETER_ON",
     "Boop": "APDS_ON",
@@ -67,6 +70,7 @@ sys_log = []
 logger = None
 server = None
 ui = None
+perf = None
 
 
 class ListHandler(logging.Handler):
@@ -174,8 +178,17 @@ def start_network_services():
     if ui is not None:
         server.set_menu_action_handler(handle_http_menu_action)
         server.set_menu_snapshot(refresh_ui_snapshot(ui))
+    if perf is not None:
+        server.set_performance_provider(get_performance_snapshot)
     print("HTTP server available at {}".format(wifi.base_url(80)))
     print("HTTP server available at {}".format(wifi.ip_url(80)))
+
+
+def get_performance_snapshot():
+    """Vrati posledni namereny performance snapshot pro HTTP API."""
+    if perf is None:
+        return {}
+    return perf.last_snapshot
 
 
 def persist_boolean_setting(key, value):
@@ -540,8 +553,8 @@ def handle_http_menu_action(action):
 
 
 # Casove konstanty pro automaticke reakce obliceje.
-BLINK_TIME_SET = 10
-BOOP_TIMER = 5
+BLINK_TIME_SET = 100
+    BOOP_TIMER = 5
 EMOTE_TIMER = 10
 
 
@@ -585,26 +598,36 @@ prev_up_pressed = False
 prev_down_pressed = False
 prev_prev_pressed = False
 toggled_setting = None
+perf = PerformanceMonitor(report_interval=5.0)
+last_debug_ui_update = 0.0
+if server is not None:
+    server.set_performance_provider(get_performance_snapshot)
 
 # Hlavni smycka pravidelne cte vstupy, aktualizuje UI a prekresluje vystupy.
 while True:
+    perf.begin_loop()
     toggled_setting = None
     iteration_logs = []
 
     # 1) Nacti vstupy ze senzoru.
+    perf.begin_section("sensors")
     movement = accelerometer.derivation() if ACCELEROMETER_ON else None
     mic_value = mic.get_value() if MIC_ON else None
     proximity_value = apds.get_value() if APDS_ON else None
+    perf.end_section()
 
     # 2) Preved fyzicke stavy tlacitek na jednotlive klik udalosti.
+    perf.begin_section("buttons")
     up_pressed = not btn_up.value
     down_pressed = not btn_down.value
     prev_pressed = not btn_prev.value
     up_click = up_pressed and not prev_up_pressed
     down_click = down_pressed and not prev_down_pressed
     prev_click = prev_pressed and not prev_prev_pressed
+    perf.end_section()
 
     # 3) Posun oblicej podle akcelerometru, ale jen kdyz zrovna neni aktivni fullscreen emote.
+    perf.begin_section("motion")
     if (
         ACCELEROMETER_ON
         and face_emotes is not None
@@ -631,18 +654,27 @@ while True:
             mouth_matrix["tile"].y = 16
             whole_matrix["tile"].x = 0
             whole_matrix["tile"].y = 0
+    perf.end_section()
 
     # 4) Synchronizuj OLED UI, zpracuj vstup a zjisti, jestli je otevreny nejaky emote z menu.
+    perf.begin_section("ui")
     ui_event = None
     active_menu_emote = None
     if ui is not None:
         sync_ui_settings(ui)
         ui.set_clock_text(get_clock_text())
-        ui.set_debug_lines([
-            f"Acc: {movement[0]}{movement[1]}",
-            f"Mic: {mic_value}",
-            f"APDS: {proximity_value}",
-        ])
+        if ui.active_screen == SCREEN_DEBUG_MENU:
+            now = time.monotonic()
+            if now - last_debug_ui_update >= DEBUG_UI_UPDATE_INTERVAL:
+                movement_text = "--"
+                if movement is not None:
+                    movement_text = "{:.2f},{:.2f}".format(movement[0], movement[1])
+                ui.set_debug_lines([
+                    f"Acc: {movement_text}",
+                    f"Mic: {mic_value}",
+                    f"APDS: {proximity_value}",
+                ] + perf.format_debug_lines())
+                last_debug_ui_update = now
         ui_event = ui.handle_input(
             confirm_click=up_click,
             next_click=down_click,
@@ -662,8 +694,10 @@ while True:
     if ui is not None:
         sync_ui_settings(ui)
         ui.render_ui()
+    perf.end_section()
 
     # 7) Aktualizuj emote controller podle menu a senzoru.
+    perf.begin_section("emote")
     if face_emotes is not None:
         face_emotes.update(
             active_menu_emote=active_menu_emote,
@@ -671,17 +705,37 @@ while True:
             mic_value=mic_value,
             proximity_value=proximity_value,
         )
+    perf.end_section()
 
     # 8) Obsluz HTTP server, pokud bezi.
+    perf.begin_section("server")
     if server is not None:
         if ui is not None:
             server.set_menu_snapshot(ui.get_http_menu_snapshot())
         else:
             server.set_menu_snapshot(None)
         server.poll()
+    perf.end_section()
 
 
-    # 9) Vypis debug logy do konzole a do kruhoveho bufferu.
+    # 9) Odesli vykreslene zmeny na RGB matici a uloz stavy tlacitek pro dalsi iteraci.
+    perf.begin_section("display")
+    if display is not None:
+        display.refresh()
+    perf.end_section()
+    prev_up_pressed = up_pressed
+    prev_down_pressed = down_pressed
+    prev_prev_pressed = prev_pressed
+
+    perf.end_work()
+    if perf.should_report():
+        perf.report()
+        if VERBOSE:
+            message = perf.format_log_line()
+            iteration_logs.append(message)
+            logger.info(message)
+
+    # 10) Vypis debug logy do konzole a do kruhoveho bufferu.
     if VERBOSE:
         if ACCELEROMETER_ON:
             message = f"Accelerometer: {movement}"
@@ -709,12 +763,5 @@ while True:
             print("------")
             print(f"{get_clock_text()}{iteration_logs}")
 
-    # 10) Odesli vykreslene zmeny na RGB matici a uloz stavy tlacitek pro dalsi iteraci.
-    if display is not None:
-        display.refresh()
-    prev_up_pressed = up_pressed
-    prev_down_pressed = down_pressed
-    prev_prev_pressed = prev_pressed
-
     # Kratke uspani drzi smycku stabilni a omezuje zbytecne pretizeni CPU.
-    time.sleep(0.02)
+    time.sleep(0.01)

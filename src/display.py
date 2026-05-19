@@ -23,6 +23,7 @@ COLOR_EFFECT_RAINBOW = "rainbow"
 RAINBOW_SPEED = 8
 RAINBOW_X_SCALE = 10
 RAINBOW_Y_SCALE = 16
+RAINBOW_FRAME_SKIP = 3
 
 
 def get_brightness_scale():
@@ -52,8 +53,10 @@ class Display:
         self.height = height
         self.bit_depth = bit_depth
         self.matrix_groups = []
+        self.image_cache = {}
         self.color_effect = COLOR_EFFECT_NORMAL
         self.effect_tick = 0
+        self.rainbow_frame_counter = 0
         self.rainbow_wheel = self._create_rainbow_wheel()
 
         # Pri znovuvytvoreni displeje se musi nejdriv uvolnit predchozi instance.
@@ -130,6 +133,14 @@ class Display:
 
     def update_matrix(self, matrix_group, matrix):
         """Prepise obsah existujici oblasti pixely z 2D seznamu."""
+        self._update_matrix(matrix_group, matrix, normalize=True)
+
+    def update_matrix_rgb565(self, matrix_group, matrix):
+        """Prepise oblast uz pripravenymi RGB565 pixely bez dalsi konverze."""
+        self._update_matrix(matrix_group, matrix, normalize=False)
+
+    def _update_matrix(self, matrix_group, matrix, normalize=True):
+        """Spolecna implementace kopirovani pixelu do bitmapove oblasti."""
         target_width = matrix_group["width"]
         target_height = matrix_group["height"]
 
@@ -141,6 +152,35 @@ class Display:
         copy_height = min(len(matrix), target_height)
 
         # Kopiruje se jen oblast, ktera se realne vejde do cilove bitmapy.
+        if not normalize:
+            base_bitmap = matrix_group["base_bitmap"]
+            bitmap = matrix_group["bitmap"]
+            active_pixels = matrix_group["active_pixels"]
+            rainbow_active = self.color_effect == COLOR_EFFECT_RAINBOW
+            wheel = self.rainbow_wheel
+            tick_offset = self.effect_tick * RAINBOW_SPEED
+            x_scale = RAINBOW_X_SCALE
+            y_scale = RAINBOW_Y_SCALE
+
+            for y in range(copy_height):
+                row = matrix[y]
+                copy_width = min(len(row), target_width)
+
+                for x in range(copy_width):
+                    color = row[x]
+                    base_bitmap[x, y] = color
+                    if color != 0:
+                        active_pixels.append((x, y))
+                        if rainbow_active:
+                            bitmap[x, y] = wheel[
+                                (x * x_scale + y * y_scale + tick_offset) & 0xFF
+                            ]
+                        else:
+                            bitmap[x, y] = color
+                    else:
+                        bitmap[x, y] = 0
+            return
+
         for y in range(copy_height):
             row = matrix[y]
             copy_width = min(len(row), target_width)
@@ -170,8 +210,11 @@ class Display:
     def refresh(self):
         """Odesle zmeny bitmap do fyzickeho displeje."""
         if self.color_effect == COLOR_EFFECT_RAINBOW:
-            self.effect_tick = (self.effect_tick + 1) % 256
-            self._render_all_effects(visible_only=True)
+            self.rainbow_frame_counter += 1
+            if self.rainbow_frame_counter >= RAINBOW_FRAME_SKIP:
+                self.rainbow_frame_counter = 0
+                self.effect_tick = (self.effect_tick + 1) % 256
+                self._render_all_effects(visible_only=True)
         self.window.refresh()
 
     def set_color_effect(self, effect):
@@ -184,6 +227,7 @@ class Display:
         self.color_effect = effect
         if effect == COLOR_EFFECT_RAINBOW:
             self.effect_tick = 0
+            self.rainbow_frame_counter = 0
         self._render_all_effects()
 
     def deinit(self):
@@ -269,6 +313,10 @@ class Display:
     def _set_base_pixel(self, matrix_group, x, y, value):
         """Ulozi puvodni pixel a vykresli jeho aktualni efektovou podobu."""
         color = self.normalize_color(value)
+        self._set_base_pixel_rgb565(matrix_group, x, y, color)
+
+    def _set_base_pixel_rgb565(self, matrix_group, x, y, color):
+        """Ulozi uz normalizovany RGB565 pixel bez opakovane konverze."""
         matrix_group["base_bitmap"][x, y] = color
         if color != 0:
             matrix_group["active_pixels"].append((x, y))
@@ -287,11 +335,17 @@ class Display:
         bitmap = matrix_group["bitmap"]
 
         if self.color_effect == COLOR_EFFECT_RAINBOW:
+            wheel = self.rainbow_wheel
+            tick_offset = self.effect_tick * RAINBOW_SPEED
+            x_scale = RAINBOW_X_SCALE
+            y_scale = RAINBOW_Y_SCALE
             for x, y in matrix_group["active_pixels"]:
                 if base_bitmap[x, y] == 0:
                     bitmap[x, y] = 0
                 else:
-                    bitmap[x, y] = self._rainbow_rgb565(x, y)
+                    bitmap[x, y] = wheel[
+                        (x * x_scale + y * y_scale + tick_offset) & 0xFF
+                    ]
             return
 
         for x, y in matrix_group["active_pixels"]:
@@ -426,9 +480,16 @@ class Display:
         """Nahraje BMP nebo pametovou bitmapu a premaluje ji do RGB565 bitmapy."""
         # Zdroj muze byt bud cesta k souboru, nebo dvojice `(bitmap, pixel_shader)`.
         if isinstance(source, str):
+            cached_matrix = self.image_cache.get(source)
+            if cached_matrix is not None:
+                self.update_matrix_rgb565(matrix_group, cached_matrix)
+                return
+
             if source.lower().endswith(".bmp"):
                 try:
-                    self.update_matrix(matrix_group, self._load_24bit_bmp_rows(source))
+                    matrix = self._load_24bit_bmp_rows(source)
+                    self.image_cache[source] = matrix
+                    self.update_matrix_rgb565(matrix_group, matrix)
                     return
                 except ValueError:
                     pass
@@ -451,4 +512,7 @@ class Display:
             for y in range(bitmap.height)
         ]
 
-        self.update_matrix(matrix_group, matrix)
+        if isinstance(source, str):
+            self.image_cache[source] = matrix
+
+        self.update_matrix_rgb565(matrix_group, matrix)

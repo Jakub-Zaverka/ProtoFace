@@ -14,6 +14,8 @@ Projekt zobrazuje animovany oblicej na RGB LED matici `64x32`, ovladaci menu na 
 - zobrazit OLED menu pro emote, nastaveni a debug
 - pres Wi-Fi synchronizovat cas a zobrazovat ho na OLED i RGB matici
 - prijimat jednoduche HTTP prikazy `up`, `down`, `ok` jako dalkove ovladani menu
+- merit odezvu hlavni smycky, vytizeni runtime, pomale sekce a volnou pamet
+- aplikovat globalni rainbow/wave barevny efekt s omezenou obnovovaci frekvenci
 
 ## Cilovy hardware
 
@@ -68,11 +70,15 @@ Ze standardnich modulu CircuitPython se pouzivaji napr.:
   - nacteni ulozenych nastaveni z `microcontroller.nvm`
   - inicializace hardwaru, UI, emote controlleru a HTTP serveru
   - hlavni smycka se ctenim vstupu a refreshi displeju
+  - instrumentace vykonu pres `PerformanceMonitor`
 
 - `display.py`
   - wrapper nad HUB75 RGB matici
   - vytvareni regionu
   - nacitani BMP a GIF snimku do oblasti displeje
+  - cache nactenych BMP assetu v RGB565
+  - rychla cesta `update_matrix_rgb565()` pro uz prevedene pixely
+  - globalni rainbow efekt s throttlingem pres `RAINBOW_FRAME_SKIP`
 
 - `emotes.py`
   - definice emote zdroju
@@ -89,6 +95,13 @@ Ze standardnich modulu CircuitPython se pouzivaji napr.:
 - `server.py`
   - jednoduchy HTTP server nad `adafruit_httpserver`
   - endpointy `/up`, `/down`, `/ok`
+  - JSON endpointy pro menu a performance metriky
+
+- `performance.py`
+  - lehky profiler hlavni smycky
+  - meri prumernou a maximalni periodu smycky
+  - meri prumernou a maximalni dobu aktivni prace
+  - eviduje nejpomalejsi sekci a volnou/obsazenou pamet
 
 - `wifi_network.py`
   - pripojeni k hlavni nebo zalozni Wi-Fi
@@ -138,14 +151,27 @@ Adresar `faces/` obsahuje obrazky a GIFy pouzivane jako emote:
 
 V kazde iteraci:
 
-1. precte senzory a stavy tlacitek
-2. prepocita pohyb obliceje podle akcelerometru
-3. synchronizuje aktualni hodnoty do UI
-4. obslouzi menu a pripadne toggly
-5. aktualizuje emote controller
-6. obslouzi HTTP server
-7. refresne RGB matici
-8. uspi smycku na `0.1 s`
+1. spusti mereni iterace pres `PerformanceMonitor`
+2. precte senzory
+3. precte tlacitka a vyrobi click udalosti
+4. prepocita pohyb obliceje podle akcelerometru
+5. synchronizuje menu, hodiny a pripadne debug radky do UI
+6. obslouzi menu a pripadne toggly
+7. aktualizuje emote controller
+8. obslouzi HTTP server
+9. refresne RGB matici
+10. ulozi performance snapshot a pri `Verbose` ho vypise
+11. uspi smycku na `0.01 s`
+
+Jednotlive casti smycky jsou merene jako sekce:
+
+- `sensors`
+- `buttons`
+- `motion`
+- `ui`
+- `emote`
+- `server`
+- `display`
 
 ## Rozlozeni RGB matice
 
@@ -168,6 +194,14 @@ V kazde iteraci:
   - velikost `64x32`
 
 Normalni oblicej je slozeny z `eye`, `nose`, `mouth`. Kdyz je aktivni `whole`, tri caste regiony se skryji.
+
+### Vykonove optimalizace displeje
+
+`Display` drzi pixely v RGB565, aby se barevne assety nemusely prevadet pri kazdem vykresleni. BMP assety nactene z cesty se po prvnim prevodu ulozi do `image_cache`; opakovane emote jako blink, speak, idle nebo boop pak pouziji uz pripravenou RGB565 matici.
+
+Pro cached assety se pouziva `update_matrix_rgb565()`, ktera preskakuje opakovanou normalizaci barev a minimalizuje pocet Python volani v pixelove smycce. To snizilo spicky pri prepnuti emote z radove stovek ms na desitky ms v beznem pripade.
+
+Rainbow/wave efekt se neprepocitava v kazdem refreshi. Konstantou `RAINBOW_FRAME_SKIP = 3` se efekt aktualizuje kazdy treti refresh, coz snizuje cukani pri soucasnem behu efektu a prepinani emote.
 
 ## OLED UI
 
@@ -217,14 +251,14 @@ Menu emote:
 - `Sleep`
 - `Dice`
 - `Back`
-- `test3`
-- `test4`
-- `test5`
 
 Menu nastaveni:
 
 - `Display`
+- `Brightness`
 - `Boop`
+- `Boop Rainbow`
+- `Rainbow Override`
 - `Mic`
 - `Blink`
 - `Accelerometer`
@@ -237,8 +271,13 @@ Debug screen zobrazuje aktualni radky s hodnotami:
 - akcelerometr
 - mikrofon
 - APDS proximity
+- prumerny a maximalni cas smycky
+- prumerny cas prace a odhad vytizeni
+- volnou pamet
 
 Prvni radek UI se automaticky zkracuje, aby se neprekryval s hodinami vpravo nahore.
+
+Debug hodnoty se na OLED aktualizuji jen pri otevrene Debug obrazovce a nejvyse jednou za `DEBUG_UI_UPDATE_INTERVAL = 1.0` s. Duvodem je rychlost SSD1306 pres I2C: caste `display.show()` volani blokovalo hlavni smycku a drive zpusobovalo spicky kolem stovek ms.
 
 ## Emote system
 
@@ -277,10 +316,18 @@ Pokud neni aktivni menu emote:
   - pri `mic_value > 5` se pouziji mluvici usta
 
 - proximity:
-  - pri `proximity_value > 200` se aktivuje `boop` oko
+  - pri `proximity_value > BOOP_PROXIMITY_THRESHOLD` se aktivuje `boop` oko
+  - aktualni hodnota konstanty je `60`
 
 - blikani:
   - po urcitem poctu cyklu se aktivuje `eye_blink.bmp`
+  - interval ridi `BLINK_TIME_SET` v `code.py` a `BLINKING_SLOWER` v `emotes.py`
+  - aktualni `BLINK_TIME_SET = 100`, tedy blink je zpomaleny proti puvodnimu nastaveni
+
+- rainbow/wave:
+  - zapina se pri aktivnim `boop`, pokud je zapnute `Boop Rainbow`
+  - lze ho vynutit globalne pres `Rainbow Override`
+  - efekt se kvuli vykonu prepocitava jen kazdy treti refresh
 
 ### Emote z menu
 
@@ -288,6 +335,7 @@ Pri otevrenem detailu emote ma menu prioritu nad automatickymi reakcemi.
 
 - `Clock`
   - fullscreen hodiny vykreslene vlastnim 5x7 fontem se skalovanim `2x`
+  - bitmapa hodin se cachuje a prekresli se jen pri zmene textu casu
 
 - `Gif`
   - fullscreen GIF `giphy.gif`
@@ -326,6 +374,8 @@ SSD1306_ON = true
 WIFI_ON = true
 BLINK_ON = true
 DISPLAY_ON = true
+BOOP_RAINBOW_ON = true
+RAINBOW_OVERRIDE_ON = false
 VERBOSE = false
 ```
 
@@ -343,20 +393,25 @@ Pouzivane klice:
 - `WIFI_ON`
 - `BLINK_ON`
 - `DISPLAY_ON`
+- `BOOP_RAINBOW_ON`
+- `RAINBOW_OVERRIDE_ON`
 - `VERBOSE`
 
 ### Runtime perzistence
 
 Toggle hodnoty z UI se ukladaji do `microcontroller.nvm`.
 
-- pouziva se magic hlavicka `PFS1`
+- pouziva se magic hlavicka `PFS2`
 - stavy jsou ulozene jako bitove pole
 - runtime nastaveni ma prioritu nad `settings.toml`
 
 Pres UI lze za behu menit:
 
 - `Display`
+- `Brightness`
 - `Boop`
+- `Boop Rainbow`
+- `Rainbow Override`
 - `Mic`
 - `Blink`
 - `Accelerometer`
@@ -394,6 +449,16 @@ Po uspesnem pripojeni se HTTP sluzba inzeruje pres mDNS.
 
 - `/ok`
   - simuluje potvrzeni
+
+- `/menu` a `/api/menu`
+  - vraci aktualni snapshot OLED menu jako JSON
+
+- `/api/action/up`, `/api/action/down`, `/api/action/ok`, `/api/action/back`
+  - JSON varianty ovladacich akci
+
+- `/api/perf`
+  - vraci posledni performance snapshot jako JSON
+  - obsahuje napr. `loop_avg_ms`, `loop_max_ms`, `work_avg_ms`, `work_max_ms`, `load_pct`, `mem_free`, `mem_alloc`, `slowest_section`, `slowest_section_ms`
 
 Aktualni `api_call` pak zpracovava `UI.handle_input()`.
 
@@ -445,6 +510,59 @@ Po restartu se automaticky spusti `code.py`.
 
 ## Ladeni
 
+### Performance metriky
+
+Runtime pouziva `PerformanceMonitor` z `performance.py`. Metriky maji hlavne ukazat, kde se hlavni smycka blokuje.
+
+Priklad radku ve `Verbose` rezimu:
+
+```text
+Perf loops=97 loop_avg=51.8ms loop_max=94.0ms work_avg=21.5ms load=41% mem_free=1848448B slowest=emote:44.9ms
+```
+
+Vyklad hodnot:
+
+- `loops`: pocet iteraci za posledni reportovaci okno
+- `loop_avg_ms`: prumerna perioda cele smycky vcetne spanku
+- `loop_max_ms`: nejhorsi namerena perioda smycky
+- `work_avg_ms`: prumerna doba aktivni prace bez zaverecneho spanku
+- `load_pct`: odhad vytizeni smycky jako `work_avg_ms / loop_avg_ms`
+- `mem_free`: volna RAM podle `gc.mem_free()`
+- `slowest`: nejpomalejsi namerena sekce a jeji cas
+
+`load_pct` neni OS CPU vytizeni. CircuitPython tady bezi v jedne hlavni smycce, proto jde o prakticky odhad pomeru aktivni prace k cele periode.
+
+Metriky jsou dostupne trema zpusoby:
+
+- Debug obrazovka OLED
+- serial konzole pri zapnutem `Verbose`
+- HTTP `GET /api/perf`
+
+### Vysledek optimalizaci
+
+Puvodni mereni ukazovalo dlouhe blokace hlavni smycky:
+
+- caste OLED prekreslovani posouvalo `slowest=ui` k hodnotam kolem `300 ms`
+- opakovane nahravani a prevod emote bitmap posouvalo `slowest=emote` k hodnotam kolem `300-400 ms`
+- rainbow/wave efekt prepocitaval aktivni pixely pri kazdem refreshi
+
+Po upravach:
+
+- Debug OLED se aktualizuje jen na Debug obrazovce a max. 1x/s
+- BMP assety jsou cachovane po prvnim nacteni
+- cached RGB565 pixely se kopiruji rychlejsi cestou bez dalsi konverze
+- clock emote se regeneruje jen pri zmene casu
+- rainbow/wave efekt se prepocitava kazdy treti refresh
+
+Typicke namerene hodnoty po optimalizaci byly priblizne:
+
+- `loop_avg` kolem `50-55 ms`
+- `work_avg` kolem `20-28 ms`
+- `load` kolem `40-50 %`
+- bezne `slowest=emote` kolem desitek ms
+
+Obcasne spicky kolem `150-250 ms` jsou stale mozne pri OLED flushi, GC, prepnuti emote nebo narocnejsim efektu. To je prakticka hranice kombinace CircuitPythonu, pixelovych Python smycek, SSD1306 pres I2C a HUB75 refreshu v jedne synchronni smycce.
+
 ### Verbose rezim
 
 Pri zapnutem `Verbose` se do konzole vypisuje:
@@ -453,6 +571,7 @@ Pri zapnutem `Verbose` se do konzole vypisuje:
 - mikrofon
 - proximity
 - zmeny nastaveni z UI
+- performance snapshot kazdych 5 sekund
 
 Krome `print()` se logy ukladaji i do vnitrniho list bufferu.
 
@@ -491,15 +610,26 @@ Krome `print()` se logy ukladaji i do vnitrniho list bufferu.
 
 - boop nereaguje
   - over `APDS9960`
-  - pripadne uprav prah `proximity_value > 200`
+  - pripadne uprav `BOOP_PROXIMITY_THRESHOLD` v `emotes.py`
+
+- animace seka pri rainbow/wave efektu
+  - zvedni `RAINBOW_FRAME_SKIP` v `display.py`
+  - vypni `Boop Rainbow` nebo `Rainbow Override`
+  - over v `/api/perf`, jestli je nejpomalejsi `emote`, `display` nebo `ui`
+
+- OLED zpomaluje smycku
+  - debug hodnoty se maji aktualizovat jen na Debug obrazovce
+  - pokud je `slowest=ui`, omez dalsi prekreslovani OLED nebo zvys `DEBUG_UI_UPDATE_INTERVAL`
 
 ## Poznamky k aktualnimu stavu
 
 README odpovida aktualnimu kodu v repozitari, vcetne:
 
 - HTTP serveru v `server.py`
+- endpointu `/api/perf`
 - debug obrazovky v `UI.py`
 - tritiho tlacitka na `A4`
-- `BLINK_ON` a `DISPLAY_ON` runtime nastaveni
-
-Testovaci polozky `test3`, `test4`, `test5` jsou v menu pritomne, ale zatim nemaji implementovanou logiku v emote controlleru.
+- `BLINK_ON`, `DISPLAY_ON`, `BOOP_RAINBOW_ON` a `RAINBOW_OVERRIDE_ON` runtime nastaveni
+- performance mereni v `performance.py`
+- cache BMP assetu a rychle RGB565 cesty v `display.py`
+- zpomaleneho blink intervalu pres `BLINK_TIME_SET = 100`

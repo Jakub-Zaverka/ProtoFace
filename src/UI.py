@@ -227,7 +227,8 @@ class UI():
         normalized_lines = [str(line) for line in lines]
         if self.debug_lines != normalized_lines:
             self.debug_lines = normalized_lines
-            self.needs_render = True
+            if self.active_screen == SCREEN_DEBUG_MENU:
+                self.needs_render = True
 
     def get_active_menu_emote(self):
         """Vrati emote otevreny v detailu nebo `None` mimo tuto obrazovku."""

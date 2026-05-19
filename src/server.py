@@ -16,6 +16,7 @@ class ServerClass:
         self.api_call = ""
         self.menu_snapshot = None
         self.menu_action_handler = None
+        self.performance_provider = None
         if self.wifi.pool is None:
             raise RuntimeError("wifi must be connected before starting the server")
 
@@ -63,6 +64,10 @@ class ServerClass:
         @self.server.route("/api/action/back")
         def api_back(request: Request):
             return Response(request, self.serialize_menu_snapshot(self.handle_menu_action("back")), content_type="application/json")
+
+        @self.server.route("/api/perf")
+        def api_perf(request: Request):
+            return Response(request, self.serialize_performance(), content_type="application/json")
         
         # Poslech probiha primo na lokalni IP adrese zarizeni.
         self.server.start(str(self.wifi.radio.ipv4_address), 80)
@@ -78,6 +83,10 @@ class ServerClass:
     def set_menu_action_handler(self, handler):
         """Zaregistruje callback, ktery umi hned zpracovat HTTP akci v UI."""
         self.menu_action_handler = handler
+
+    def set_performance_provider(self, provider):
+        """Zaregistruje callback vracejici posledni runtime metriky."""
+        self.performance_provider = provider
 
     def handle_menu_action(self, action):
         """Zpracuje HTTP akci a vrati uz aktualizovany snapshot menu."""
@@ -99,6 +108,18 @@ class ServerClass:
             payload = dict(payload)
             payload["ok"] = True
 
+        return json.dumps(payload)
+
+    def serialize_performance(self):
+        """Vrati posledni namerene runtime metriky jako JSON."""
+        if self.performance_provider is None:
+            return json.dumps({
+                "ok": False,
+                "error": "performance_unavailable",
+            })
+
+        payload = dict(self.performance_provider())
+        payload["ok"] = True
         return json.dumps(payload)
 
     def get_index_html(self):

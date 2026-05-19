@@ -22,7 +22,7 @@ FONT_5X7 = {
 }
 
 BLINKING_SLOWER = 25
-BOOP_PROXIMITY_THRESHOLD = 40
+BOOP_PROXIMITY_THRESHOLD = 60
 
 
 # Zakladni stavebni bloky pro regiony a jejich zdroje.
@@ -252,6 +252,11 @@ def create_time_bitmap(device_clock=None):
         now = time.localtime()
         text = "{:02}:{:02}".format(now.tm_hour, now.tm_min)
 
+    return create_time_bitmap_from_text(text)
+
+
+def create_time_bitmap_from_text(text):
+    """Vykresli predany casovy text do bitmapy o velikosti `64x32`."""
     bitmap = displayio.Bitmap(64, 32, 2)
     palette = displayio.Palette(2)
     palette[0] = 0x000000
@@ -323,6 +328,8 @@ class FaceEmoteController:
             else max(1, blink_time_set // 6)
         )
         self.blink_time = 0
+        self.clock_emote = None
+        self.clock_text = None
 
         # Zde jsou zaregistrovane vsechny assety, ktere controller umi pouzit.
         self.eye_idle_emote = create_image_emote("/faces/eye.bmp", "eye")
@@ -386,7 +393,7 @@ class FaceEmoteController:
 
         # Emote vybrany v menu ma prioritu pred automatickymi reakcemi senzoru.
         if active_menu_emote == "clock":
-            requests["whole"]["source"] = create_clock_emote(device_clock)
+            requests["whole"]["source"] = self._get_clock_emote(device_clock)
             requests["whole"]["duration"] = 1
             return True
 
@@ -425,6 +432,23 @@ class FaceEmoteController:
             return True
 
         return False
+
+    def _get_clock_emote(self, device_clock):
+        """Vrati cached clock emote a prekresli ho jen pri zmene casu."""
+        if device_clock is not None:
+            text = device_clock.get_time()
+        else:
+            now = time.localtime()
+            text = "{:02}:{:02}".format(now.tm_hour, now.tm_min)
+
+        if self.clock_emote is None or self.clock_text != text:
+            self.clock_emote = {
+                "name": "clock",
+                "content": create_time_bitmap_from_text(text),
+            }
+            self.clock_text = text
+
+        return self.clock_emote
 
     def update(
         self,
