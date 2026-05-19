@@ -554,7 +554,7 @@ def handle_http_menu_action(action):
 
 # Casove konstanty pro automaticke reakce obliceje.
 BLINK_TIME_SET = 100
-    BOOP_TIMER = 5
+BOOP_TIMER = 5
 EMOTE_TIMER = 10
 
 
