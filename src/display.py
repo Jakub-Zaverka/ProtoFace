@@ -20,7 +20,9 @@ BRIGHTNESS_STEPS = (0.3, 0.4, 0.5, 0.7, 1.0)
 COLOR_EFFECT_NORMAL = "normal"
 COLOR_EFFECT_RAINBOW = "rainbow"
 
-RAINBOW_SPEED = 4
+RAINBOW_SPEED = 20
+RAINBOW_X_SCALE = 14
+RAINBOW_Y_SCALE = 22
 
 
 def get_brightness_scale():
@@ -283,7 +285,11 @@ class Display:
 
     def _rainbow_rgb565(self, x, y):
         """Vygeneruje RGB565 barvu z posunuteho color-wheel indexu."""
-        pos = (x * 6 + y * 10 + self.effect_tick * RAINBOW_SPEED) & 0xFF
+        pos = (
+            x * RAINBOW_X_SCALE
+            + y * RAINBOW_Y_SCALE
+            + self.effect_tick * RAINBOW_SPEED
+        ) & 0xFF
 
         if pos < 85:
             red = 255 - pos * 3
