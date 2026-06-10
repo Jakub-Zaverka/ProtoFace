@@ -12,6 +12,21 @@ DISPLAY_HEIGHT = 32
 PANEL_WIDTH = 64
 RIGHT_PANEL_X_OFFSET = 64
 BIT_DEPTH = 2
+#Right je ve skutečnosti levý, tedy 0-63 displej
+SCREEN_ENABLED = {
+    "left": True,
+    "right": True,
+}
+TILEGRID_ENABLED = {
+    "nose": True,
+    "eye": True,
+    "mouth": True,
+    "whole": True,
+    "nose_right": True,
+    "eye_right": True,
+    "mouth_right": True,
+    "whole_right": True,
+}
 RGB565_COLOR_COUNT = 65536
 RGB565_CONVERTER = displayio.ColorConverter(
     input_colorspace=displayio.Colorspace.RGB565
@@ -127,6 +142,8 @@ class Display:
             x=tile_x,
             y=position_y,
         )
+        enabled = self.is_tilegrid_enabled(name, screen)
+        tile.hidden = not enabled
         matrix = {
             "name": name,
             "bitmap": bitmap,
@@ -141,10 +158,26 @@ class Display:
             "screen": screen,
             "mirror_x": mirror_x,
             "mirror_position_x": mirror_position_x,
+            "enabled": enabled,
         }
         self.matrix_groups.append(matrix)
         screen_group.append(tile)
         return matrix
+
+    def is_tilegrid_enabled(self, name, screen):
+        """Vrati, jestli je konkretni vykreslovaci usek zapnuty."""
+        return SCREEN_ENABLED.get(screen, True) and TILEGRID_ENABLED.get(name, True)
+
+    def _enforce_tilegrid_enabled_flags(self):
+        """Schova vypnute tilegridy i kdyz je controller pri emote znovu odkryl."""
+        for matrix_group in self.matrix_groups:
+            enabled = self.is_tilegrid_enabled(
+                matrix_group["name"],
+                matrix_group["screen"],
+            )
+            matrix_group["enabled"] = enabled
+            if not enabled:
+                matrix_group["tile"].hidden = True
 
     def to_bitmap(self, matrix, color_count=RGB565_COLOR_COUNT):
         """Prevede 2D seznam pixelu na `displayio.Bitmap`."""
@@ -220,6 +253,7 @@ class Display:
 
     def refresh(self):
         """Odesle zmeny bitmap do fyzickeho displeje."""
+        self._enforce_tilegrid_enabled_flags()
         if self.color_effect == COLOR_EFFECT_RAINBOW:
             self.rainbow_frame_counter += 1
             if self.rainbow_frame_counter >= RAINBOW_FRAME_SKIP:
