@@ -343,6 +343,7 @@ class FaceEmoteController:
         self.cross_emote = create_image_emote("/faces/cross.bmp", "cross")
         self.whole_dice_roll = create_gif_emote("/faces/dice.gif", "dice", loop=False)
         self.color_test = create_image_emote("/faces/test_colors.bmp","color")
+        self.debug_emote = create_image_emote("/faces/debug_fill.bmp", "debug")
         # Template: sem pridej novy asset pro emote.
         # self.eye_happy_emote = create_image_emote("/faces/eye_happy.bmp", "happy")
         # self.mouth_smile_emote = create_image_emote("/faces/mouth_smile.bmp", "smile")
@@ -404,6 +405,11 @@ class FaceEmoteController:
         
         if active_menu_emote == "dice":
             requests["whole"]["source"] = self.whole_dice_roll
+            requests["whole"]["duration"] = 1
+            return True
+
+        if active_menu_emote == "debug":
+            requests["whole"]["source"] = self.debug_emote
             requests["whole"]["duration"] = 1
             return True
 

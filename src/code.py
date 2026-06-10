@@ -238,14 +238,17 @@ def initialize_display_stack():
     global mouth_matrix
     global whole_matrix
 
-    # RGB matice je rozdelena na tri casti obliceje a jeden fullscreen region.
+    # RGB matice je slozena ze dvou 64x32 panelu v serii. Jeden 64x32 oblicej
+    # kopirujeme do obou polovin fyzicke bitmapy, aby se panely chovaly stejne.
     display = Display()
+    mirror_offsets = [(display_module.PANEL_WIDTH, 0)]
     nose_matrix = display.create_matrix(
         name="nose",
         position_x=0,
         position_y=0,
         matrix_width=32,
         matrix_height=16,
+        mirror_offsets=mirror_offsets,
     )
     eye_matrix = display.create_matrix(
         name="eye",
@@ -253,6 +256,7 @@ def initialize_display_stack():
         position_y=0,
         matrix_width=32,
         matrix_height=16,
+        mirror_offsets=mirror_offsets,
     )
     mouth_matrix = display.create_matrix(
         name="mouth",
@@ -260,6 +264,7 @@ def initialize_display_stack():
         position_y=16,
         matrix_width=64,
         matrix_height=16,
+        mirror_offsets=mirror_offsets,
     )
     whole_matrix = display.create_matrix(
         name="whole",
@@ -267,6 +272,7 @@ def initialize_display_stack():
         position_y=0,
         matrix_width=64,
         matrix_height=32,
+        mirror_offsets=mirror_offsets,
     )
     face_emotes = emotes.FaceEmoteController(
         display,

@@ -2,7 +2,7 @@
 
 Technicka dokumentace projektu pro `Adafruit MatrixPortal S3` v `CircuitPython`.
 
-Projekt zobrazuje animovany oblicej na RGB LED matici `64x32`, ovladaci menu na OLED `SSD1306`, reaguje na mikrofon, proximity senzor a akcelerometr a umi volitelne pripojit Wi-Fi, synchronizovat cas a vystavit jednoduche HTTP ovladani.
+Projekt zobrazuje animovany oblicej na RGB LED matici `128x32`, ovladaci menu na OLED `SSD1306`, reaguje na mikrofon, proximity senzor a akcelerometr a umi volitelne pripojit Wi-Fi, synchronizovat cas a vystavit jednoduche HTTP ovladani.
 
 ## Co projekt umi
 
@@ -23,7 +23,7 @@ Aktualni projekt odpovida konfiguraci:
 
 - deska: `Adafruit MatrixPortal S3`
 - firmware: `Adafruit CircuitPython 10.1.4`
-- hlavni vystup: HUB75 RGB matrix `64x32`
+- hlavni vystup: dve HUB75 RGB matrix `64x32` zapojene v serii jako `128x32`
 - OLED: `SSD1306 128x64` na `0x3C`
 - proximity senzor: `APDS9960`
 - akcelerometr: `LIS3DH` na `0x19`
@@ -136,6 +136,7 @@ Adresar `faces/` obsahuje obrazky a GIFy pouzivane jako emote:
 - `nose.bmp`
 - `sleep.bmp`
 - `cross.bmp`
+- `debug_fill.bmp`
 - `giphy.gif`
 - `dice.gif`
 
@@ -175,7 +176,9 @@ Jednotlive casti smycky jsou merene jako sekce:
 
 ## Rozlozeni RGB matice
 
-`Display` v `display.py` deli matici `64x32` na ctyri regiony:
+`Display` v `display.py` obsluhuje fyzickou matici `128x32`. Logicky oblicej ma porad rozmer `64x32`; kazdy region kopiruje sve pixely jeste s posunem `+64 px` do stejne fyzicke bitmapy, takze levy a pravy panel zobrazuji stejny obraz a hybou se spolecne.
+
+Logicky oblicej `64x32` je rozdeleny na ctyri regiony:
 
 - `nose`
   - pozice `0,0`
