@@ -66,6 +66,10 @@ nose_matrix = None
 eye_matrix = None
 mouth_matrix = None
 whole_matrix = None
+nose_matrix_right = None
+eye_matrix_right = None
+mouth_matrix_right = None
+whole_matrix_right = None
 sys_log = []
 logger = None
 server = None
@@ -237,8 +241,12 @@ def initialize_display_stack():
     global eye_matrix
     global mouth_matrix
     global whole_matrix
+    global nose_matrix_right
+    global eye_matrix_right
+    global mouth_matrix_right
+    global whole_matrix_right
 
-    # RGB matice je rozdelena na tri casti obliceje a jeden fullscreen region.
+    # Kazda fyzicka strana ma vlastni sadu regionu, aby sla ovladat nezavisle.
     display = Display()
     nose_matrix = display.create_matrix(
         name="nose",
@@ -246,6 +254,8 @@ def initialize_display_stack():
         position_y=0,
         matrix_width=32,
         matrix_height=16,
+        mirror_x=True,
+        mirror_position_x=True,
     )
     eye_matrix = display.create_matrix(
         name="eye",
@@ -253,6 +263,8 @@ def initialize_display_stack():
         position_y=0,
         matrix_width=32,
         matrix_height=16,
+        mirror_x=True,
+        mirror_position_x=True,
     )
     mouth_matrix = display.create_matrix(
         name="mouth",
@@ -260,6 +272,8 @@ def initialize_display_stack():
         position_y=16,
         matrix_width=64,
         matrix_height=16,
+        mirror_x=True,
+        mirror_position_x=True,
     )
     whole_matrix = display.create_matrix(
         name="whole",
@@ -267,6 +281,40 @@ def initialize_display_stack():
         position_y=0,
         matrix_width=64,
         matrix_height=32,
+        mirror_x=True,
+        mirror_position_x=True,
+    )
+    nose_matrix_right = display.create_matrix(
+        name="nose_right",
+        position_x=0,
+        position_y=0,
+        matrix_width=32,
+        matrix_height=16,
+        screen="right",
+    )
+    eye_matrix_right = display.create_matrix(
+        name="eye_right",
+        position_x=31,
+        position_y=0,
+        matrix_width=32,
+        matrix_height=16,
+        screen="right",
+    )
+    mouth_matrix_right = display.create_matrix(
+        name="mouth_right",
+        position_x=0,
+        position_y=16,
+        matrix_width=64,
+        matrix_height=16,
+        screen="right",
+    )
+    whole_matrix_right = display.create_matrix(
+        name="whole_right",
+        position_x=0,
+        position_y=0,
+        matrix_width=64,
+        matrix_height=32,
+        screen="right",
     )
     face_emotes = emotes.FaceEmoteController(
         display,
@@ -274,6 +322,12 @@ def initialize_display_stack():
         nose_matrix,
         mouth_matrix,
         whole_matrix,
+        secondary_faces=[{
+            "eye": eye_matrix_right,
+            "nose": nose_matrix_right,
+            "mouth": mouth_matrix_right,
+            "whole": whole_matrix_right,
+        }],
         blink_enabled=BLINK_ON,
         blink_time_set=BLINK_TIME_SET,
         emote_timer=EMOTE_TIMER,
@@ -293,6 +347,10 @@ def shutdown_display_stack():
     global eye_matrix
     global mouth_matrix
     global whole_matrix
+    global nose_matrix_right
+    global eye_matrix_right
+    global mouth_matrix_right
+    global whole_matrix_right
 
     if face_emotes is not None:
         face_emotes.shutdown()
@@ -305,6 +363,10 @@ def shutdown_display_stack():
     eye_matrix = None
     mouth_matrix = None
     whole_matrix = None
+    nose_matrix_right = None
+    eye_matrix_right = None
+    mouth_matrix_right = None
+    whole_matrix_right = None
 
 
 def handle_ui_event(event):
@@ -637,23 +699,33 @@ while True:
             if VERBOSE:
                 print("move")
             # Posun vsechny regiony stejne, aby se oblicej hybal jako celek.
-            eye_matrix["tile"].x -= int(movement[0])
-            eye_matrix["tile"].y += int(movement[1])
-            nose_matrix["tile"].x -= int(movement[0])
-            nose_matrix["tile"].y += int(movement[1])
-            mouth_matrix["tile"].x -= int(movement[0])
-            mouth_matrix["tile"].y += int(movement[1])
-            whole_matrix["tile"].x -= int(movement[0])
-            whole_matrix["tile"].y += int(movement[1])
+            movement_x = int(movement[0])
+            movement_y = int(movement[1])
+            for matrix_group in (
+                eye_matrix,
+                nose_matrix,
+                mouth_matrix,
+                whole_matrix,
+                eye_matrix_right,
+                nose_matrix_right,
+                mouth_matrix_right,
+                whole_matrix_right,
+            ):
+                matrix_group["tile"].x -= movement_x
+                matrix_group["tile"].y += movement_y
         else:
-            eye_matrix["tile"].x = 31
-            eye_matrix["tile"].y = 0
-            nose_matrix["tile"].x = 0
-            nose_matrix["tile"].y = 0
-            mouth_matrix["tile"].x = 0
-            mouth_matrix["tile"].y = 16
-            whole_matrix["tile"].x = 0
-            whole_matrix["tile"].y = 0
+            for matrix_group in (
+                eye_matrix,
+                nose_matrix,
+                mouth_matrix,
+                whole_matrix,
+                eye_matrix_right,
+                nose_matrix_right,
+                mouth_matrix_right,
+                whole_matrix_right,
+            ):
+                matrix_group["tile"].x = matrix_group["position_x"]
+                matrix_group["tile"].y = matrix_group["position_y"]
     perf.end_section()
 
     # 4) Synchronizuj OLED UI, zpracuj vstup a zjisti, jestli je otevreny nejaky emote z menu.

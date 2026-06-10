@@ -299,6 +299,7 @@ class FaceEmoteController:
         mouth_matrix,
         whole_matrix,
         *,
+        secondary_faces=None,
         blink_enabled=True,
         blink_time_set=10,
         emote_timer=20,
@@ -314,6 +315,7 @@ class FaceEmoteController:
         self.nose_matrix = nose_matrix
         self.mouth_matrix = mouth_matrix
         self.whole_matrix = whole_matrix
+        self.secondary_faces = secondary_faces or []
         self.verbose = verbose
 
         self.blink_enabled = blink_enabled
@@ -349,31 +351,99 @@ class FaceEmoteController:
         # self.eye_blink_emote = create_gif_emote("/faces/eye_blink.gif", "blink", loop=False)
 
         # Kazdy region ma vlastni runtime stav a muze mit jiny zdroj i delku trvani.
-        self.eye_region = create_region("eye", eye_matrix, self.eye_idle_emote)
-        self.nose_region = create_region("nose", nose_matrix, self.nose_idle_source)
-        self.mouth_region = create_region("mouth", mouth_matrix, self.mouth_idle_emote)
-        self.whole_region = create_region("whole", whole_matrix, hidden_when_idle=True)
+        primary_regions = self._create_face_regions(
+            "primary",
+            eye_matrix,
+            nose_matrix,
+            mouth_matrix,
+            whole_matrix,
+        )
+        self.region_sets = [primary_regions]
+        for index, face in enumerate(self.secondary_faces):
+            self.region_sets.append(
+                self._create_face_regions(
+                    "secondary{}".format(index + 1),
+                    face["eye"],
+                    face["nose"],
+                    face["mouth"],
+                    face["whole"],
+                )
+            )
+
+        self.eye_region = primary_regions["eye"]
+        self.nose_region = primary_regions["nose"]
+        self.mouth_region = primary_regions["mouth"]
+        self.whole_region = primary_regions["whole"]
 
         # Fullscreen vrstva je v idle stavu schovana a pri startu se nactou idle obrazky obliceje.
-        self.whole_matrix["tile"].hidden = True
-        self.display.load_bmp_into_matrix(
-            self.eye_matrix,
-            _get_source_content(self.eye_idle_emote),
-        )
-        self.display.load_bmp_into_matrix(
-            self.nose_matrix,
-            self.nose_idle_source,
-        )
-        self.display.load_bmp_into_matrix(
-            self.mouth_matrix,
-            _get_source_content(self.mouth_idle_emote),
-        )
+        for regions in self.region_sets:
+            regions["whole"]["matrix"]["tile"].hidden = True
+            self.display.load_bmp_into_matrix(
+                regions["eye"]["matrix"],
+                _get_source_content(self.eye_idle_emote),
+            )
+            self.display.load_bmp_into_matrix(
+                regions["nose"]["matrix"],
+                self.nose_idle_source,
+            )
+            self.display.load_bmp_into_matrix(
+                regions["mouth"]["matrix"],
+                _get_source_content(self.mouth_idle_emote),
+            )
+
+    def _create_face_regions(
+        self,
+        suffix,
+        eye_matrix,
+        nose_matrix,
+        mouth_matrix,
+        whole_matrix,
+    ):
+        """Vytvori jednu kompletni sadu regionu obliceje."""
+        return {
+            "eye": create_region(
+                "eye_{}".format(suffix),
+                eye_matrix,
+                self.eye_idle_emote,
+            ),
+            "nose": create_region(
+                "nose_{}".format(suffix),
+                nose_matrix,
+                self.nose_idle_source,
+            ),
+            "mouth": create_region(
+                "mouth_{}".format(suffix),
+                mouth_matrix,
+                self.mouth_idle_emote,
+            ),
+            "whole": create_region(
+                "whole_{}".format(suffix),
+                whole_matrix,
+                hidden_when_idle=True,
+            ),
+        }
 
     def _set_face_hidden(self, hidden):
         """Skryje nebo zobrazi tri zakladni casti obliceje najednou."""
-        self.eye_matrix["tile"].hidden = hidden
-        self.nose_matrix["tile"].hidden = hidden
-        self.mouth_matrix["tile"].hidden = hidden
+        for regions in self.region_sets:
+            regions["eye"]["matrix"]["tile"].hidden = hidden
+            regions["nose"]["matrix"]["tile"].hidden = hidden
+            regions["mouth"]["matrix"]["tile"].hidden = hidden
+
+    def _update_region_sets(self, requests):
+        """Aplikuje stejne pozadavky na vsechny fyzicke sady regionu."""
+        started = {}
+        for regions in self.region_sets:
+            for name in ("nose", "mouth", "eye", "whole"):
+                _, region_started = update_emote(
+                    self.display,
+                    regions[name],
+                    source=requests[name]["source"],
+                    duration=requests[name]["duration"],
+                    verbose=self.verbose,
+                )
+                started[name] = started.get(name, False) or region_started
+        return started
 
     def _create_requests(self):
         """Pripravi prazdne pozadavky pro regiony v aktualni iteraci."""
@@ -469,21 +539,7 @@ class FaceEmoteController:
 
         if menu_emote_active:
             # Pri aktivnim menu emote se preskoci automaticke reakce mikrofonu, boop a blikani.
-            started = {}
-            for name, region in (
-                ("nose", self.nose_region),
-                ("mouth", self.mouth_region),
-                ("eye", self.eye_region),
-                ("whole", self.whole_region),
-            ):
-                _, started[name] = update_emote(
-                    self.display,
-                    region,
-                    source=requests[name]["source"],
-                    duration=requests[name]["duration"],
-                    verbose=self.verbose,
-                )
-
+            started = self._update_region_sets(requests)
             self._set_face_hidden(self.whole_region["active"])
             self._sync_color_effect()
             self.blink_time = 0
@@ -526,20 +582,7 @@ class FaceEmoteController:
                 self.blink_time = 0
 
         # Nakonec se vsechny regiony posunou o jeden krok podle sestavenych pozadavku.
-        started = {}
-        for name, region in (
-            ("nose", self.nose_region),
-            ("mouth", self.mouth_region),
-            ("eye", self.eye_region),
-            ("whole", self.whole_region),
-        ):
-            _, started[name] = update_emote(
-                self.display,
-                region,
-                source=requests[name]["source"],
-                duration=requests[name]["duration"],
-                verbose=self.verbose,
-            )
+        started = self._update_region_sets(requests)
 
         self._set_face_hidden(self.whole_region["active"])
         self._sync_color_effect()
@@ -605,10 +648,11 @@ class FaceEmoteController:
 
     def shutdown(self):
         """Uvolni aktivni prehravace driv, nez se vypne displej."""
-        for region in (
-            self.eye_region,
-            self.nose_region,
-            self.mouth_region,
-            self.whole_region,
-        ):
-            _clear_region_player(region)
+        for regions in self.region_sets:
+            for region in (
+                regions["eye"],
+                regions["nose"],
+                regions["mouth"],
+                regions["whole"],
+            ):
+                _clear_region_player(region)

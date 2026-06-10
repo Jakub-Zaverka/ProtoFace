@@ -7,9 +7,11 @@ import framebufferio
 import rgbmatrix
 import adafruit_imageload
 
-DISPLAY_WIDTH = 64
+DISPLAY_WIDTH = 128
 DISPLAY_HEIGHT = 32
-BIT_DEPTH = 3
+PANEL_WIDTH = 64
+RIGHT_PANEL_X_OFFSET = 64
+BIT_DEPTH = 2
 RGB565_COLOR_COUNT = 65536
 RGB565_CONVERTER = displayio.ColorConverter(
     input_colorspace=displayio.Colorspace.RGB565
@@ -87,18 +89,42 @@ class Display:
         # `auto_refresh=False` nechava aktualizaci plne pod kontrolou hlavni smycky.
         self.window = framebufferio.FramebufferDisplay(matrix, auto_refresh=False)
         self.group = displayio.Group()
+        self.screen_groups = {
+            "left": displayio.Group(x=0, y=0),
+            "right": displayio.Group(x=RIGHT_PANEL_X_OFFSET, y=0),
+        }
+        self.group.append(self.screen_groups["left"])
+        self.group.append(self.screen_groups["right"])
         self.window.root_group = self.group
         self.window.refresh()
 
-    def create_matrix(self, name, position_x, position_y, matrix_width, matrix_height):
+    def create_matrix(
+        self,
+        name,
+        position_x,
+        position_y,
+        matrix_width,
+        matrix_height,
+        screen="left",
+        mirror_x=False,
+        mirror_position_x=False,
+    ):
         """Vytvori jednu bitmapovou oblast na RGB matici."""
         # Kazdy region ma vlastni RGB565 bitmapu, ale vsechny regiony sdili jednu root groupu.
+        screen_group = self.screen_groups.get(screen)
+        if screen_group is None:
+            raise ValueError("Unknown screen group: {}".format(screen))
+
         bitmap = displayio.Bitmap(matrix_width, matrix_height, RGB565_COLOR_COUNT)
         base_bitmap = displayio.Bitmap(matrix_width, matrix_height, RGB565_COLOR_COUNT)
+        tile_x = position_x
+        if mirror_position_x:
+            tile_x = PANEL_WIDTH - position_x - matrix_width
+
         tile = displayio.TileGrid(
             bitmap,
             pixel_shader=RGB565_CONVERTER,
-            x=position_x,
+            x=tile_x,
             y=position_y,
         )
         matrix = {
@@ -107,13 +133,17 @@ class Display:
             "base_bitmap": base_bitmap,
             "active_pixels": [],
             "tile": tile,
-            "position_x": position_x,
+            "position_x": tile_x,
+            "source_position_x": position_x,
             "position_y": position_y,
             "width": matrix_width,
             "height": matrix_height,
+            "screen": screen,
+            "mirror_x": mirror_x,
+            "mirror_position_x": mirror_position_x,
         }
         self.matrix_groups.append(matrix)
-        self.group.append(tile)
+        screen_group.append(tile)
         return matrix
 
     def to_bitmap(self, matrix, color_count=RGB565_COLOR_COUNT):
@@ -153,32 +183,12 @@ class Display:
 
         # Kopiruje se jen oblast, ktera se realne vejde do cilove bitmapy.
         if not normalize:
-            base_bitmap = matrix_group["base_bitmap"]
-            bitmap = matrix_group["bitmap"]
-            active_pixels = matrix_group["active_pixels"]
-            rainbow_active = self.color_effect == COLOR_EFFECT_RAINBOW
-            wheel = self.rainbow_wheel
-            tick_offset = self.effect_tick * RAINBOW_SPEED
-            x_scale = RAINBOW_X_SCALE
-            y_scale = RAINBOW_Y_SCALE
-
             for y in range(copy_height):
                 row = matrix[y]
                 copy_width = min(len(row), target_width)
 
                 for x in range(copy_width):
-                    color = row[x]
-                    base_bitmap[x, y] = color
-                    if color != 0:
-                        active_pixels.append((x, y))
-                        if rainbow_active:
-                            bitmap[x, y] = wheel[
-                                (x * x_scale + y * y_scale + tick_offset) & 0xFF
-                            ]
-                        else:
-                            bitmap[x, y] = color
-                    else:
-                        bitmap[x, y] = 0
+                    self._set_base_pixel_rgb565(matrix_group, x, y, row[x])
             return
 
         for y in range(copy_height):
@@ -195,16 +205,17 @@ class Display:
     def fill_matrix(self, matrix_group, value):
         """Vyplni celou oblast jednou barvou."""
         color = self.normalize_color(value)
-        matrix_group["base_bitmap"].fill(color)
+        matrix_group["base_bitmap"].fill(0)
+        matrix_group["bitmap"].fill(0)
+        matrix_group["active_pixels"] = []
+
         if color == 0:
-            matrix_group["active_pixels"] = []
-            matrix_group["bitmap"].fill(0)
-        else:
-            matrix_group["active_pixels"] = [
-                (x, y)
-                for y in range(matrix_group["height"])
-                for x in range(matrix_group["width"])
-            ]
+            return
+
+        for y in range(matrix_group["height"]):
+            for x in range(matrix_group["width"]):
+                self._set_base_pixel_rgb565(matrix_group, x, y, color)
+
         self._render_effect_for_matrix(matrix_group)
 
     def refresh(self):
@@ -317,6 +328,9 @@ class Display:
 
     def _set_base_pixel_rgb565(self, matrix_group, x, y, color):
         """Ulozi uz normalizovany RGB565 pixel bez opakovane konverze."""
+        if matrix_group.get("mirror_x", False):
+            x = matrix_group["width"] - 1 - x
+
         matrix_group["base_bitmap"][x, y] = color
         if color != 0:
             matrix_group["active_pixels"].append((x, y))
