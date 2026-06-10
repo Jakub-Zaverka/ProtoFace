@@ -23,6 +23,10 @@ FONT_5X7 = {
 
 BLINKING_SLOWER = 25
 BOOP_PROXIMITY_THRESHOLD = 60
+MIC_SPEAK_THRESHOLD = 15
+MIC_RELEASE_THRESHOLD = 8
+MIC_SPEAK_HOLD_FRAMES = 6
+MIC_CONTROLS_MOUTH = False
 
 
 # Zakladni stavebni bloky pro regiony a jejich zdroje.
@@ -330,6 +334,7 @@ class FaceEmoteController:
             else max(1, blink_time_set // 6)
         )
         self.blink_time = 0
+        self.mic_speak_hold = 0
         self.clock_emote = None
         self.clock_text = None
 
@@ -546,10 +551,20 @@ class FaceEmoteController:
             return started
 
         # Mikrofon meni jen region ust a jen pokud neni aktivni fullscreen vrstva.
-        if not menu_emote_active and mic_value is not None and not self.whole_region["active"]:
-            if mic_value > 5:
+        if (
+            MIC_CONTROLS_MOUTH
+            and not menu_emote_active
+            and mic_value is not None
+            and not self.whole_region["active"]
+        ):
+            if mic_value >= MIC_SPEAK_THRESHOLD:
+                self.mic_speak_hold = MIC_SPEAK_HOLD_FRAMES
+            elif mic_value <= MIC_RELEASE_THRESHOLD and self.mic_speak_hold > 0:
+                self.mic_speak_hold -= 1
+
+            if self.mic_speak_hold > 0:
                 requests["mouth"]["source"] = self.mouth_speak_emote
-                requests["mouth"]["duration"] = 1
+                requests["mouth"]["duration"] = MIC_SPEAK_HOLD_FRAMES
                 if self.verbose:
                     print("speak")
 

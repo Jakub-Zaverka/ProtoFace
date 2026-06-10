@@ -144,6 +144,7 @@ RUNTIME_SETTINGS = load_runtime_settings()
 # Vychozi konfigurace runtime vznikne spojenim persistentnich voleb a `settings.toml`.
 ACCELEROMETER_ON = read_bool_setting("ACCELEROMETER_ON", True)
 MIC_ON = read_bool_setting("MIC_ON", True)
+MIC_READ_ON = False
 APDS_ON = read_bool_setting("APDS_ON", True)
 SSD1306_ON = read_bool_setting("SSD1306_ON", True)
 WIFI_ON = read_bool_setting("WIFI_ON", True)
@@ -674,7 +675,7 @@ while True:
     # 1) Nacti vstupy ze senzoru.
     perf.begin_section("sensors")
     movement = accelerometer.derivation() if ACCELEROMETER_ON else None
-    mic_value = mic.get_value() if MIC_ON else None
+    mic_value = mic.get_value() if MIC_ON and MIC_READ_ON else None
     proximity_value = apds.get_value() if APDS_ON else None
     perf.end_section()
 
@@ -795,6 +796,7 @@ while True:
     if display is not None:
         display.refresh()
     perf.end_section()
+
     prev_up_pressed = up_pressed
     prev_down_pressed = down_pressed
     prev_prev_pressed = prev_pressed
