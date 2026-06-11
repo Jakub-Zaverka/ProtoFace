@@ -5,31 +5,17 @@
 #include "generated_settings.h"
 
 // Prihlasovaci udaje k Wi-Fi, ke ktere se ESP32 pripoji.
+// Password je redundant, protože se k wifi nepřipojuje TODO:Odebrat
 // Sit musi byt 2.4 GHz, protoze ESP32 nepodporuje 5 GHz Wi-Fi.
 const char *WIFI_SSID = "NAZEV_WIFI";
 const char *WIFI_PASSWORD = "HESLO_WIFI";
 
-// MAC adresa prijimaci desky.
+// MAC adresa prijimaci desky. - Matrix portálu S3
 // Na tuto adresu bude tento program posilat zpravy pres ESP-NOW.
 uint8_t receiverMac[] = {0x28, 0x37, 0x2F, 0xE0, 0xBC, 0x40};
 
 // Struktura popisuje data, ktera se budou posilat prijimaci.
 // Sender i receiver musi mit stejnou strukturu, jinak si data spatne prectou.
-// struct ControlMessage
-// {
-//     // Pocitadlo odeslanych zprav. Hodi se pro kontrolu,
-//     // jestli zpravy chodi ve spravnem poradi.
-//     uint32_t counter;
-
-//     // Ukazkove stavy tlacitek.
-//     bool button1;
-//     bool button2;
-
-//     // Obecna ciselna hodnota. Tady se do ni uklada cteni z analogoveho pinu A0.
-//     int value;
-//     char debug;
-// };
-
 struct ControlMessage
 {
     uint32_t counter;
@@ -114,12 +100,6 @@ void initEspNow()
     esp_now_peer_info_t peerInfo = {};
     memcpy(peerInfo.peer_addr, receiverMac, 6);
 
-    // Hodnota 0 znamena: pouzij aktualni Wi-Fi kanal.
-    // Protoze uz jsme pripojeni k routeru, pouzije se kanal routeru.
-    // peerInfo.channel = 0;
-
-    // Posilame pres station interface, protoze deska bezi jako Wi-Fi klient.
-    // peerInfo.ifidx = WIFI_IF_STA;
 
     // Sifrovani je zatim vypnute.
     peerInfo.encrypt = false;
@@ -182,7 +162,6 @@ void setup()
 
             if (!esp_channel_set && WiFi.SSID(i) == HOME_WIFI_SSID)
             {
-                // connectToWiFi(HOME_WIFI_SSID, HOME_WIFI_PASSWORD);
                 esp_wifi_set_channel(WiFi.channel(i), WIFI_SECOND_CHAN_NONE);
                 Serial.print("Connected to:");
                 Serial.println(WiFi.SSID(i));
@@ -192,7 +171,6 @@ void setup()
             }
             else if (!esp_channel_set && WiFi.SSID(i) == BACKUP_WIFI_SSID)
             {
-                // connectToWiFi(BACKUP_WIFI_SSID, BACKUP_WIFI_PASSWORD);
                 esp_wifi_set_channel(WiFi.channel(i), WIFI_SECOND_CHAN_NONE);
                 Serial.print("Connected to:");
                 Serial.println(WiFi.SSID(i));
@@ -206,16 +184,13 @@ void setup()
             }
             else
             {
-                // Připojeno k jiné WiFi síti
                 // Nebo nalezen jiný channel
             }
         }
     }
 
-    // Nejdriv se pripojime k Wi-Fi, aby ESP-NOW pouzil stejny kanal jako router.
-    // connectToWiFi();
 
-    // Potom inicializujeme ESP-NOW a pridame prijimaci desku jako peer.
+    // inicializujeme ESP-NOW a pridame prijimaci desku jako peer.
     initEspNow();
 
     // Vychozi hodnoty zpravy pred prvnim odeslanim.
@@ -233,45 +208,9 @@ void setup()
     Serial.println("Setup done");
 }
 
-// void loop()
-// {
-//     // Pri kazdem pruchodu zvysi pocitadlo odeslanych zprav.
-//     msg.counter++;
-
-//     // Testovaci zmena hodnoty button1: pri kazdem odeslani se prepne true/false.
-//     msg.button1 = !msg.button1;
-
-//     // Druhe tlacitko je zatim vzdy vypnute.
-//     msg.button2 = false;
-
-//     // Do zpravy se ulozi aktualni analogova hodnota z pinu A0.
-//     // Pozdeji se sem muze dat treba hodnota joysticku, potenciometru nebo senzoru.
-//     msg.value = analogRead(A0);
-
-//     // Odesle celou strukturu msg na MAC adresu receiveru.
-//     // Pretypovani na uint8_t* rika funkci, ze ma strukturu poslat jako blok bajtu.
-//     esp_err_t result = esp_now_send(receiverMac, (uint8_t*)&msg, sizeof(msg));
-
-//     // esp_now_send() vraci jen informaci, jestli se zpravu podarilo zaradit k odeslani.
-//     // Skutecny vysledek odeslani vypise callback onDataSent().
-//     if (result == ESP_OK)
-//     {
-//         Serial.print("Odeslano, counter = ");
-//         Serial.println(msg.counter);
-//     }
-//     else
-//     {
-//         Serial.print("Chyba pri esp_now_send(): ");
-//         Serial.println(result);
-//     }
-
-//     // Posila jednu zpravu za sekundu.
-//     delay(1000);
-// }
 
 void loop()
 {
-    // Serial.println(WiFi.localIP());
 
     msg.button1 = false;
     msg.button2 = false;
