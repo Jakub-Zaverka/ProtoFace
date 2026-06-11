@@ -16,6 +16,7 @@ Projekt zobrazuje animovany oblicej na RGB LED matici `64x32`, ovladaci menu na 
 - prijimat jednoduche HTTP prikazy `up`, `down`, `ok` jako dalkove ovladani menu
 - merit odezvu hlavni smycky, vytizeni runtime, pomale sekce a volnou pamet
 - aplikovat globalni rainbow/wave barevny efekt s omezenou obnovovaci frekvenci
+- prijimat ovladani menu z externiho ESP32 ovladace pres ESP-NOW
 
 ## Cilovy hardware
 
@@ -107,6 +108,11 @@ Ze standardnich modulu CircuitPython se pouzivaji napr.:
   - pripojeni k hlavni nebo zalozni Wi-Fi
   - `mdns` hostname
   - `SocketPool`
+
+- `../controller/`
+  - PlatformIO firmware pro externi ESP32 ovladac
+  - posila `ControlMessage` pres ESP-NOW
+  - ovlada OLED menu pres akce up, down a ok
 
 - `clock.py`
   - synchronizace RTC pres NTP
