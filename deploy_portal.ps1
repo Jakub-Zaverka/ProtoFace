@@ -47,6 +47,6 @@ $reloadFile = Join-Path $target ".reload"
 Write-Host ""
 Write-Host "Deploy done. Matrix Portal should reload code.py." -ForegroundColor Green
 
-$port = Read-Host "COM port, napr. COM5"
+# $port = Read-Host "COM port, napr. COM5"
 Write-Host "Press CTRL-D to reload Matrix Portal"
-py -m serial.tools.miniterm $port 115200
+py -m serial.tools.miniterm COM4 115200
