@@ -631,6 +631,7 @@ def decode_control_message(packet):
         "button1": bool(data[4]),
         "button2": bool(data[5]),
         "button3": bool(data[6]),
+        "button4": len(data) >= 8 and bool(data[7]),
     }
 
 
@@ -640,6 +641,7 @@ def control_message_to_ui_clicks(message):
         "confirm": message["button3"],
         "next": message["button2"],
         "prev": message["button1"],
+        "back": message["button4"],
     }
 
 
@@ -714,6 +716,7 @@ while True:
     esp_confirm_click = False
     esp_next_click = False
     esp_prev_click = False
+    esp_back_click = False
 
     packet = esp.read() if esp is not None else None
     if packet is not None:
@@ -722,6 +725,7 @@ while True:
         esp_confirm_click = esp_pressed["confirm"]
         esp_next_click = esp_pressed["next"]
         esp_prev_click = esp_pressed["prev"]
+        esp_back_click = esp_pressed["back"]
 
     # 2) Preved fyzicke stavy tlacitek na jednotlive klik udalosti.
     perf.begin_section("buttons")
@@ -780,6 +784,8 @@ while True:
     if ui is not None:
         sync_ui_settings(ui)
         ui.set_clock_text(get_clock_text())
+        if esp_back_click:
+            ui.go_back()
         if ui.active_screen == SCREEN_DEBUG_MENU:
             now = time.monotonic()
             if now - last_debug_ui_update >= DEBUG_UI_UPDATE_INTERVAL:

@@ -30,11 +30,13 @@ uint8_t receiverMac[] = {0x28, 0x37, 0x2F, 0xE0, 0xBC, 0x40};
 //     char debug;
 // };
 
-struct ControlMessage{
+struct ControlMessage
+{
     uint32_t counter;
     bool button1;
     bool button2;
     bool button3;
+    bool button4;
 };
 
 // Globalni instance zpravy.
@@ -114,10 +116,10 @@ void initEspNow()
 
     // Hodnota 0 znamena: pouzij aktualni Wi-Fi kanal.
     // Protoze uz jsme pripojeni k routeru, pouzije se kanal routeru.
-    peerInfo.channel = 0;
+    // peerInfo.channel = 0;
 
     // Posilame pres station interface, protoze deska bezi jako Wi-Fi klient.
-    peerInfo.ifidx = WIFI_IF_STA;
+    // peerInfo.ifidx = WIFI_IF_STA;
 
     // Sifrovani je zatim vypnute.
     peerInfo.encrypt = false;
@@ -156,37 +158,56 @@ void setup()
 
         for (int i = 0; i < networkCount; i++)
         {
-            Serial.print(i + 1);
-            Serial.print(": ");
-
-            Serial.print(WiFi.SSID(i));
-            Serial.print(" | signal: ");
-            Serial.print(WiFi.RSSI(i));
-            Serial.print(" dBm");
-
-            Serial.print(" | kanal: ");
-            Serial.print(WiFi.channel(i));
-
-            Serial.print(" | sifrovani: ");
-            Serial.println(WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "open" : "secured");
-
-            delay(10);
-
-            if (WiFi.status() != WL_CONNECTED && WiFi.SSID(i) == HOME_WIFI_SSID)
+            if (false)
             {
-                connectToWiFi(HOME_WIFI_SSID, HOME_WIFI_PASSWORD);
+                Serial.print(i + 1);
+                Serial.print(": ");
+
+                Serial.print(WiFi.SSID(i));
+                Serial.print(" | signal: ");
+                Serial.print(WiFi.RSSI(i));
+                Serial.print(" dBm");
+
+                Serial.print(" | kanal: ");
+                Serial.print(WiFi.channel(i));
+
+                Serial.print(" | sifrovani: ");
+                Serial.println(WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "open" : "secured");
+
+                delay(10);
             }
-            else if (WiFi.status() != WL_CONNECTED && WiFi.SSID(i) == BACKUP_WIFI_SSID)
+
+            bool esp_channel_set = false;
+            WiFi.mode(WIFI_STA);
+
+            if (!esp_channel_set && WiFi.SSID(i) == HOME_WIFI_SSID)
             {
-                connectToWiFi(BACKUP_WIFI_SSID, BACKUP_WIFI_PASSWORD);
+                // connectToWiFi(HOME_WIFI_SSID, HOME_WIFI_PASSWORD);
+                esp_wifi_set_channel(WiFi.channel(i), WIFI_SECOND_CHAN_NONE);
+                Serial.print("Connected to:");
+                Serial.println(WiFi.SSID(i));
+                Serial.print("On channel:");
+                Serial.println(WiFi.channel(i));
+                esp_channel_set = true;
             }
-            else if (WiFi.status() != WL_CONNECTED)
+            else if (!esp_channel_set && WiFi.SSID(i) == BACKUP_WIFI_SSID)
             {
-                Serial.println("No WIFI available");
+                // connectToWiFi(BACKUP_WIFI_SSID, BACKUP_WIFI_PASSWORD);
+                esp_wifi_set_channel(WiFi.channel(i), WIFI_SECOND_CHAN_NONE);
+                Serial.print("Connected to:");
+                Serial.println(WiFi.SSID(i));
+                Serial.print("On channel:");
+                Serial.println(WiFi.channel(i));
+                esp_channel_set = true;
+            }
+            else if (!esp_channel_set)
+            {
+                Serial.println("No Known WIFI available");
             }
             else
             {
                 // Připojeno k jiné WiFi síti
+                // Nebo nalezen jiný channel
             }
         }
     }
@@ -201,7 +222,13 @@ void setup()
     msg.counter = 0;
     msg.button1 = false;
     msg.button2 = false;
-    msg.button2 = false;
+    msg.button3 = false;
+    msg.button4 = false;
+
+    pinMode(D0, INPUT_PULLUP);
+    pinMode(D1, INPUT_PULLUP);
+    pinMode(D2, INPUT_PULLUP);
+    pinMode(D3, INPUT_PULLUP);
 
     Serial.println("Setup done");
 }
@@ -249,8 +276,9 @@ void loop()
     msg.button1 = false;
     msg.button2 = false;
     msg.button3 = false;
-    
-    char debug_value;
+    msg.button4 = false;
+
+    char debug_value = '\0';
 
     if (Serial.available() > 0)
     {
@@ -260,7 +288,8 @@ void loop()
         Serial.println(debug_value);
     }
 
-    if (analogRead(A0) == HIGH || debug_value == 'w')
+
+    if (digitalRead(D0) == LOW || debug_value == 'w')
     {
         msg.button1 = true;
         esp_err_t result = esp_now_send(receiverMac, (uint8_t *)&msg, sizeof(msg));
@@ -276,7 +305,7 @@ void loop()
             Serial.println(result);
         }
     }
-    else if (analogRead(A1) == HIGH || debug_value == 's')
+    else if (digitalRead(D1) == LOW || debug_value == 's')
     {
         msg.button2 = true;
         esp_err_t result = esp_now_send(receiverMac, (uint8_t *)&msg, sizeof(msg));
@@ -292,9 +321,25 @@ void loop()
             Serial.println(result);
         }
     }
-    else if (analogRead(A2) == HIGH || debug_value == 'd')
+    else if (digitalRead(D2) == LOW || debug_value == 'd')
     {
         msg.button3 = true;
+        esp_err_t result = esp_now_send(receiverMac, (uint8_t *)&msg, sizeof(msg));
+        if (result == ESP_OK)
+        {
+            Serial.print("Odeslano, counter = ");
+            ++msg.counter;
+            Serial.println(msg.counter);
+        }
+        else
+        {
+            Serial.print("Chyba pri esp_now_send(): ");
+            Serial.println(result);
+        }
+    }
+    else if (digitalRead(D3) == LOW || debug_value == 'a')
+    {
+        msg.button4 = true;
         esp_err_t result = esp_now_send(receiverMac, (uint8_t *)&msg, sizeof(msg));
         if (result == ESP_OK)
         {
