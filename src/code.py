@@ -21,6 +21,8 @@ from UI import SCREEN_DEBUG_MENU
 from UI import UI
 from server import ServerClass
 from performance import PerformanceMonitor
+import espnow
+import struct
 
 # Identifikator a mapa bitu pro ulozeni runtime voleb do `microcontroller.nvm`.
 NVM_MAGIC = b"PFS2"
@@ -58,6 +60,7 @@ accelerometer = None
 mic = None
 apds = None
 wifi = None
+esp = None
 device_clock = None
 oled = None
 display = None
@@ -614,6 +617,31 @@ def handle_http_menu_action(action):
 
     return None
 
+def decode_control_message(packet):
+    if hasattr(packet, "msg"):
+        data = packet.msg
+    else:
+        data = packet
+
+    if len(data) not in (7, 8):
+        raise ValueError("ControlMessage must have 7 or 8 bytes")
+
+    return {
+        "counter": struct.unpack("<I", data[0:4])[0],
+        "button1": bool(data[4]),
+        "button2": bool(data[5]),
+        "button3": bool(data[6]),
+    }
+
+
+def control_message_to_ui_clicks(message):
+    """Prevede ESP-NOW ControlMessage na stejne kliky, ktere pouziva OLED UI."""
+    return {
+        "confirm": message["button3"],
+        "next": message["button2"],
+        "prev": message["button1"],
+    }
+
 
 # Casove konstanty pro automaticke reakce obliceje.
 BLINK_TIME_SET = 100
@@ -631,6 +659,9 @@ if WIFI_ON:
     device_clock = Clock(wifi)
     device_clock.sync_ntp()
     start_network_services()
+    esp = espnow.ESPNow()
+    mac =wifi.radio.mac_address
+    # print("uint8_t receiverMac[] = {%s};" % ", ".join(["0x%02X" % b for b in mac]))
 
 if MIC_ON:
     mic = Microphone()
@@ -678,6 +709,19 @@ while True:
     mic_value = mic.get_value() if MIC_ON and MIC_READ_ON else None
     proximity_value = apds.get_value() if APDS_ON else None
     perf.end_section()
+
+    # 1.5) Přečti ESP komunikaci
+    esp_confirm_click = False
+    esp_next_click = False
+    esp_prev_click = False
+
+    packet = esp.read() if esp is not None else None
+    if packet is not None:
+        message = decode_control_message(packet)
+        esp_pressed = control_message_to_ui_clicks(message)
+        esp_confirm_click = esp_pressed["confirm"]
+        esp_next_click = esp_pressed["next"]
+        esp_prev_click = esp_pressed["prev"]
 
     # 2) Preved fyzicke stavy tlacitek na jednotlive klik udalosti.
     perf.begin_section("buttons")
@@ -749,9 +793,9 @@ while True:
                 ] + perf.format_debug_lines())
                 last_debug_ui_update = now
         ui_event = ui.handle_input(
-            confirm_click=up_click,
-            next_click=down_click,
-            prev_click=prev_click,
+            confirm_click=up_click or esp_confirm_click,
+            next_click=down_click or esp_next_click,
+            prev_click=prev_click or esp_prev_click,
             server=server
         )
         active_menu_emote = ui.get_active_menu_emote()
