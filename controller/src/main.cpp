@@ -3,12 +3,16 @@
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include "generated_settings.h"
+#include <esp_sleep.h>
+#include <driver/gpio.h>
 
 // Prihlasovaci udaje k Wi-Fi, ke ktere se ESP32 pripoji.
 // Password je redundant, protože se k wifi nepřipojuje TODO:Odebrat
 // Sit musi byt 2.4 GHz, protoze ESP32 nepodporuje 5 GHz Wi-Fi.
 const char *WIFI_SSID = "NAZEV_WIFI";
 const char *WIFI_PASSWORD = "HESLO_WIFI";
+
+
 
 // MAC adresa prijimaci desky. - Matrix portálu S3
 // Na tuto adresu bude tento program posilat zpravy pres ESP-NOW.
@@ -25,6 +29,13 @@ struct ControlMessage
     bool button4;
 };
 
+static const gpio_num_t WAKE_D0 = GPIO_NUM_0;
+static const gpio_num_t WAKE_D1 = GPIO_NUM_1;
+static const gpio_num_t WAKE_D2 = GPIO_NUM_2;
+static const gpio_num_t WAKE_D3 = GPIO_NUM_21;
+
+static const unsigned long SLEEP_THRESHOLD_TIME = 30 * 1000; // 30s
+static unsigned long last_input_time = 0;
 // Globalni instance zpravy.
 // Funkce loop() ji pred kazdym odeslanim upravi a posle receiveru.
 ControlMessage msg;
@@ -46,6 +57,8 @@ ControlMessage msg;
 //     }
 // }
 
+// Neni potřeba se teď připojovat k wifi
+// Neni použito v kódu
 void connectToWiFi(const char *ssid, const char *password)
 {
     Serial.println();
@@ -114,6 +127,27 @@ void initEspNow()
     Serial.println("Receiver pridan jako ESP-NOW peer");
 }
 
+void enterLightSleep()
+    {
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+
+        gpio_wakeup_enable(WAKE_D0, GPIO_INTR_LOW_LEVEL);
+        gpio_wakeup_enable(WAKE_D1, GPIO_INTR_LOW_LEVEL);
+        gpio_wakeup_enable(WAKE_D2, GPIO_INTR_LOW_LEVEL);
+        gpio_wakeup_enable(WAKE_D3, GPIO_INTR_LOW_LEVEL);
+
+        esp_sleep_enable_gpio_wakeup();
+
+        Serial.flush();
+        esp_light_sleep_start();
+
+        // Po probuzeni program pokracuje tady.
+        gpio_wakeup_disable(WAKE_D0);
+        gpio_wakeup_disable(WAKE_D1);
+        gpio_wakeup_disable(WAKE_D2);
+        gpio_wakeup_disable(WAKE_D3);
+    }
+
 void setup()
 {
     // Spusti seriovou linku pro vypisy do monitoru.
@@ -136,6 +170,9 @@ void setup()
         Serial.print("Nalezeno siti: ");
         Serial.println(networkCount);
 
+        bool esp_channel_set = false;
+        WiFi.mode(WIFI_STA);
+
         for (int i = 0; i < networkCount; i++)
         {
             if (false)
@@ -157,9 +194,6 @@ void setup()
                 delay(10);
             }
 
-            bool esp_channel_set = false;
-            WiFi.mode(WIFI_STA);
-
             if (!esp_channel_set && WiFi.SSID(i) == HOME_WIFI_SSID)
             {
                 esp_wifi_set_channel(WiFi.channel(i), WIFI_SECOND_CHAN_NONE);
@@ -180,12 +214,17 @@ void setup()
             }
             else if (!esp_channel_set)
             {
-                Serial.println("No Known WIFI available");
+                // Zatim nic, rozhodneme az po kontrole vsech nalezenych siti.
             }
             else
             {
                 // Nebo nalezen jiný channel
             }
+        }
+
+        if (!esp_channel_set)
+        {
+            Serial.println("No Known WIFI available");
         }
     }
 
@@ -205,13 +244,19 @@ void setup()
     pinMode(D2, INPUT_PULLUP);
     pinMode(D3, INPUT_PULLUP);
 
+    pinMode(LED_BUILTIN, OUTPUT);
+    
     Serial.println("Setup done");
+
+    last_input_time = millis();
+
+    //Setup done led
+    digitalWrite(LED_BUILTIN, LOW);
 }
 
 
 void loop()
 {
-
     msg.button1 = false;
     msg.button2 = false;
     msg.button3 = false;
@@ -243,6 +288,7 @@ void loop()
             Serial.print("Chyba pri esp_now_send(): ");
             Serial.println(result);
         }
+        last_input_time = millis();
     }
     else if (digitalRead(D1) == LOW || debug_value == 's')
     {
@@ -259,6 +305,7 @@ void loop()
             Serial.print("Chyba pri esp_now_send(): ");
             Serial.println(result);
         }
+        last_input_time = millis();
     }
     else if (digitalRead(D2) == LOW || debug_value == 'd')
     {
@@ -275,6 +322,7 @@ void loop()
             Serial.print("Chyba pri esp_now_send(): ");
             Serial.println(result);
         }
+        last_input_time = millis();
     }
     else if (digitalRead(D3) == LOW || debug_value == 'a')
     {
@@ -291,7 +339,16 @@ void loop()
             Serial.print("Chyba pri esp_now_send(): ");
             Serial.println(result);
         }
+        last_input_time = millis();
     }
 
     delay(100);
+
+    if (millis() - last_input_time > SLEEP_THRESHOLD_TIME)
+    {
+        digitalWrite(LED_BUILTIN, HIGH);
+        enterLightSleep();
+        digitalWrite(LED_BUILTIN, LOW);
+        last_input_time = millis();
+    }
 }
