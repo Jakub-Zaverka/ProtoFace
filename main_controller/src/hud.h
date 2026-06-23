@@ -4,6 +4,7 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include "hud_navigation.h"
 
 // namespace je "jmenna oblast".
 // Pomaha seskupit souvisejici veci pod jedno jmeno, tady Hud.
@@ -75,42 +76,66 @@ namespace Hud
         display().setCursor(0, 0);
     }
 
+    // smaže část displeje
+    // int start_x, int start_y, int end_x, int end_y
+    static void clearPart(int start_x, int start_y, int end_x, int end_y)
+    {
+        display().fillRect(start_x, start_y, end_x, end_y, SSD1306_BLACK);
+        display().display();
+    }
+
     // Tato funkce vykresli jednoduchou testovaci obrazovku.
     // Vetsina metod nejdrive meni pametovy obraz displeje.
     // Skutecne odeslani na OLED probehne az pri display().display().
     // Python podobnost: je to jako kdyz v knihovne nejdriv kreslis do bufferu
     // a pak zavolas show() nebo display() pro prekresleni fyzicke obrazovky.
-    static void showTestScreen()
-    {
-        clear();
-        display().println("SSD1306 TEST");
-        display().println();
-        display().println("Matrix Portal S3");
-        display().println("PlatformIO + C++");
-        display().display();
-    }
+    // static void showTestScreen()
+    // {
+    //     clear();
+    //     display().println("SSD1306 TEST");
+    //     display().println();
+    //     display().println("Matrix Portal S3");
+    //     display().println("PlatformIO + C++");
+    //     display().display();
+    // }
 
     // update() je pripravene misto pro budouci pravidelne prekreslovani HUDu.
     // Volame ji z loop(), i kdyz zatim nic nedela.
     // Python podobnost: obsah while True smycky by casto volal update() porad dokola.
     static void update()
     {
+        clear();
+
+        HudNavigation::State &state = HudNavigation::getState();
+
+        display().println(state.name);
+        display().println();
+
+        for (int i = 0; i < state.childCount; i++)
+        {
+            if (i == state.selectedIndex)
+            {
+                display().print("> ");
+            }
+            else
+            {
+                display().print("  ");
+            }
+
+            display().println(state.children[i]->name);
+        }
+
         display().display();
     }
 
     static void showStatus(const String &message = "")
     {
-        if(message != ""){
+        if (message != "")
+        {
             clear();
             display().println(message);
             display().display();
         }
-
-    }
-
-    static void clearPart(int start_x, int start_y, int end_x, int end_y){
-        display().fillRect(start_x, start_y, end_x, end_y, SSD1306_BLACK);
-        display().display();
     }
 
     // const char * je ukazatel na textovy retezec, ktery funkce nebude menit.

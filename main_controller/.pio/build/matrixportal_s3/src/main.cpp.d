@@ -190,7 +190,7 @@
  C:/Users/Bukaj/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src/SPI.h \
  C:/Users/Bukaj/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-spi.h \
  .pio/libdeps/matrixportal_s3/Adafruit\ SSD1306/Adafruit_SSD1306.h \
- src/wifi_manager.h \
+ src/hud_navigation.h src/wifi_manager.h \
  C:/Users/Bukaj/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFi.h \
  C:/Users/Bukaj/.platformio/packages/framework-arduinoespressif32/cores/esp32/IPv6Address.h \
  C:/Users/Bukaj/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiType.h \
