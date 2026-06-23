@@ -1,0 +1,5 @@
+settings.toml
+settings.example.toml
+scripts/generate_settings.py
+generated_settings.h
+secrets.h

@@ -1,0 +1,1 @@
+// připojení k EPS a komunikace s ním

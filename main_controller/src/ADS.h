@@ -1,0 +1,1 @@
+// ovládání ADS komponenty
