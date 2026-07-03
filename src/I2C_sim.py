@@ -78,16 +78,19 @@ def get_i2c():
 
 def scan_i2c():
     """Naskenuje I2C sbernici a vrati nalezene adresy."""
-    i2c = get_i2c()
-
-    # I2C scan vyzaduje lock, proto se po pouziti vzdy zase odemkne.
-    while not i2c.try_lock():
-        pass
-
     try:
-        return [hex(address) for address in i2c.scan()]
-    finally:
-        i2c.unlock()
+        i2c = get_i2c()
+
+        # I2C scan vyzaduje lock, proto se po pouziti vzdy zase odemkne.
+        while not i2c.try_lock():
+            pass
+
+        try:
+            return [hex(address) for address in i2c.scan()]
+        finally:
+            i2c.unlock()
+    except OSError:
+        return []
 
 
 class APDSSensor:
@@ -100,9 +103,14 @@ class APDSSensor:
 
     def _initialize_sensor(self):
         """Inicializuje APDS9960 nebo ho znovu vytvori po chybe sbernice."""
-        self.sensor = APDS9960(self.i2c)
-        self.sensor.enable_proximity = True
-        self.sensor.enable_color = True
+        try:
+            self.sensor = APDS9960(self.i2c)
+            self.sensor.enable_proximity = True
+            self.sensor.enable_color = True
+            return True
+        except (OSError, ValueError):
+            self.sensor = None
+            return False
 
     def scan(self):
         """Vrati adresy viditelne na I2C pro rychlou diagnostiku."""
@@ -110,28 +118,39 @@ class APDSSensor:
 
     def get_value(self):
         """Vrati aktualni proximity hodnotu nebo `None` pri chybe I2C."""
+        if self.sensor is None and not self._initialize_sensor():
+            return None
+
         try:
             return self.sensor.proximity
         except OSError:
             # Pri obcasne chybe sbernice se senzor zkusí znovu vytvorit.
+            self.sensor = None
+            if not self._initialize_sensor():
+                return None
             try:
-                self._initialize_sensor()
                 return self.sensor.proximity
             except OSError:
+                self.sensor = None
                 return None
 
     def get_color(self):
         """Vrati aktualni barevna data, pokud jsou dostupna."""
+        if self.sensor is None and not self._initialize_sensor():
+            return None
+
         try:
             if self.sensor.color_data_ready:
                 return self.sensor.color_data
         except OSError:
-            try:
-                self._initialize_sensor()
-                if self.sensor.color_data_ready:
-                    return self.sensor.color_data
-            except OSError:
-                return None
+            self.sensor = None
+            if self._initialize_sensor():
+                try:
+                    if self.sensor.color_data_ready:
+                        return self.sensor.color_data
+                except OSError:
+                    self.sensor = None
+                    return None
         return None
 
 
@@ -142,13 +161,30 @@ class OLEDDisplay:
         self.i2c = get_i2c()
         self.width = width
         self.height = height
-        self.display = adafruit_ssd1306.SSD1306_I2C(
-            width,
-            height,
-            self.i2c,
-            addr=address,
-        )
-        self.clear()
+        self.address = address
+        self.display = None
+        if self._initialize_display():
+            self.clear()
+
+    def _initialize_display(self):
+        """Vytvori SSD1306 instanci, pokud je displej dostupny."""
+        try:
+            self.display = adafruit_ssd1306.SSD1306_I2C(
+                self.width,
+                self.height,
+                self.i2c,
+                addr=self.address,
+            )
+            return True
+        except (OSError, ValueError):
+            self.display = None
+            return False
+
+    def _ensure_display(self):
+        """Vrati `True`, pokud je OLED aktualne pripraveny k zapisu."""
+        if self.display is not None:
+            return True
+        return self._initialize_display()
 
     def scan(self):
         """Vrati adresy viditelne na I2C pro rychlou diagnostiku."""
@@ -156,35 +192,61 @@ class OLEDDisplay:
 
     def clear(self):
         """Vymaze OLED framebuffer a ihned ho zobrazi."""
-        self.display.fill(0)
-        self.display.show()
+        if not self._ensure_display():
+            return False
+
+        try:
+            self.display.fill(0)
+            self.display.show()
+            return True
+        except OSError:
+            self.display = None
+            return False
 
     def get_value(self):
-        """Vrati puvodni instanci `SSD1306_I2C`."""
+        """Vrati puvodni instanci `SSD1306_I2C`, pokud je dostupna."""
+        if not self._ensure_display():
+            return None
         return self.display
 
     def show_text(self, text, x=0, y=0, clear=True):
         """Vykresli text na zadanou pozici a pripadne nejdriv smaze displej."""
-        if clear:
-            self.display.fill(0)
+        if not self._ensure_display():
+            return False
 
-        self._draw_text(str(text), x, y)
+        try:
+            if clear:
+                self.display.fill(0)
 
-        self.display.show()
+            self._draw_text(str(text), x, y)
+
+            self.display.show()
+            return True
+        except OSError:
+            self.display = None
+            return False
 
     def show_text_blocks(self, blocks, clear=True):
         """Vykresli vice textovych bloku a OLED obnovi jen jednou."""
-        if clear:
-            self.display.fill(0)
+        if not self._ensure_display():
+            return False
 
-        # Bloky umoznuji kombinovat menu, hodiny a debug text v jednom flushi.
-        for block in blocks:
-            text = block.get("text", "")
-            x = block.get("x", 0)
-            y = block.get("y", 0)
-            self._draw_text(str(text), x, y)
+        try:
+            if clear:
+                self.display.fill(0)
 
-        self.display.show()
+            # Bloky umoznuji kombinovat menu, hodiny a debug text v jednom flushi.
+            for block in blocks:
+                text = block.get("text", "")
+                x = block.get("x", 0)
+                y = block.get("y", 0)
+                self._draw_text(str(text), x, y)
+
+            self.display.show()
+            return True
+        except OSError:
+            self.display = None
+            return False
 
     def draw_status(self, boop=False, emote=False, emote_time=0, emote_name="", current_time = "00:00"):
         """Zobrazi jednoduchou stavovou obrazovku s emote a casem."""
@@ -194,7 +256,7 @@ class OLEDDisplay:
             f"{emote_name} {emote_time}\n"
             f"{current_time}"
         )
-        self.show_text(text)
+        return self.show_text(text)
 
     def _draw_text(self, text, x=0, y=0, color=1):
         """Kresli vice radku textu lokalnim 5x7 bitmapovym fontem."""

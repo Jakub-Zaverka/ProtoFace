@@ -707,9 +707,9 @@ while True:
 
     # 1) Nacti vstupy ze senzoru.
     perf.begin_section("sensors")
-    movement = accelerometer.derivation() if ACCELEROMETER_ON else None
+    movement = accelerometer.derivation() if ACCELEROMETER_ON and accelerometer is not None else None
     mic_value = mic.get_value() if MIC_ON and MIC_READ_ON else None
-    proximity_value = apds.get_value() if APDS_ON else None
+    proximity_value = apds.get_value() if APDS_ON and apds is not None else None
     perf.end_section()
 
     # 1.5) Přečti ESP komunikaci
@@ -742,6 +742,7 @@ while True:
     if (
         ACCELEROMETER_ON
         and face_emotes is not None
+        and movement is not None
         and not face_emotes.whole_region["active"]
     ):
         if abs(movement[0]) > MIN_MOVEMENT or abs(movement[1]) > MIN_MOVEMENT or abs(movement[2]) > MIN_MOVEMENT:
