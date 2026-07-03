@@ -282,6 +282,7 @@ void loop()
             Serial.print("Odeslano, counter = ");
             ++msg.counter;
             Serial.println(msg.counter);
+            Serial.println("Up");
         }
         else
         {
@@ -299,6 +300,7 @@ void loop()
             Serial.print("Odeslano, counter = ");
             ++msg.counter;
             Serial.println(msg.counter);
+            Serial.println("Down");
         }
         else
         {
@@ -316,6 +318,7 @@ void loop()
             Serial.print("Odeslano, counter = ");
             ++msg.counter;
             Serial.println(msg.counter);
+            Serial.println("Ok");
         }
         else
         {
@@ -333,6 +336,7 @@ void loop()
             Serial.print("Odeslano, counter = ");
             ++msg.counter;
             Serial.println(msg.counter);
+            Serial.println("Home");
         }
         else
         {
