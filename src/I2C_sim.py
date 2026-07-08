@@ -175,6 +175,8 @@ class OLEDDisplay:
                 self.i2c,
                 addr=self.address,
             )
+            self.display.write_cmd(0xA0)
+            self.display.write_cmd(0xC0)
             return True
         except (OSError, ValueError):
             self.display = None
