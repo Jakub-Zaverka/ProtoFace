@@ -3,8 +3,6 @@
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include "generated_settings.h"
-#include <esp_sleep.h>
-#include <driver/gpio.h>
 
 // Prihlasovaci udaje k Wi-Fi, ke ktere se ESP32 pripoji.
 // Password je redundant, protože se k wifi nepřipojuje TODO:Odebrat
@@ -29,14 +27,7 @@ struct ControlMessage
     bool button4;
 };
 
-static const gpio_num_t WAKE_D0 = GPIO_NUM_0;
-static const gpio_num_t WAKE_D1 = GPIO_NUM_1;
-static const gpio_num_t WAKE_D2 = GPIO_NUM_2;
-static const gpio_num_t WAKE_D3 = GPIO_NUM_21;
-
-static const unsigned long SLEEP_THRESHOLD_TIME = 30 * 1000; // 30s
 static const unsigned long BUTTON_REPEAT_BLOCK_MS = 400;
-static unsigned long last_input_time = 0;
 // Globalni instance zpravy.
 // Funkce loop() ji pred kazdym odeslanim upravi a posle receiveru.
 ControlMessage msg;
@@ -131,27 +122,6 @@ void initEspNow()
     Serial.println("Receiver pridan jako ESP-NOW peer");
 }
 
-void enterLightSleep()
-    {
-        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
-
-        gpio_wakeup_enable(WAKE_D0, GPIO_INTR_LOW_LEVEL);
-        gpio_wakeup_enable(WAKE_D1, GPIO_INTR_LOW_LEVEL);
-        gpio_wakeup_enable(WAKE_D2, GPIO_INTR_LOW_LEVEL);
-        gpio_wakeup_enable(WAKE_D3, GPIO_INTR_LOW_LEVEL);
-
-        esp_sleep_enable_gpio_wakeup();
-
-        Serial.flush();
-        esp_light_sleep_start();
-
-        // Po probuzeni program pokracuje tady.
-        gpio_wakeup_disable(WAKE_D0);
-        gpio_wakeup_disable(WAKE_D1);
-        gpio_wakeup_disable(WAKE_D2);
-        gpio_wakeup_disable(WAKE_D3);
-    }
-
 bool sendButtonPress(uint8_t buttonIndex, const char *label)
 {
     msg.button1 = buttonIndex == 0;
@@ -166,7 +136,6 @@ bool sendButtonPress(uint8_t buttonIndex, const char *label)
         ++msg.counter;
         Serial.println(msg.counter);
         Serial.println(label);
-        last_input_time = millis();
         return true;
     }
 
@@ -275,8 +244,6 @@ void setup()
     
     Serial.println("Setup done");
 
-    last_input_time = millis();
-
     //Setup done led
     digitalWrite(LED_BUILTIN, LOW);
 }
@@ -333,11 +300,4 @@ void loop()
 
     delay(100);
 
-    if (millis() - last_input_time > SLEEP_THRESHOLD_TIME)
-    {
-        digitalWrite(LED_BUILTIN, HIGH);
-        enterLightSleep();
-        digitalWrite(LED_BUILTIN, LOW);
-        last_input_time = millis();
-    }
 }
