@@ -532,6 +532,7 @@ class FaceEmoteController:
         device_clock=None,
         mic_value=None,
         proximity_value=None,
+        boop_threshold=BOOP_PROXIMITY_THRESHOLD,
     ):
         """Zpracuje vstupy a posune vsechny aktivni emote o jeden krok."""
         # Nejdriv se poskladaji pozadavky na jednotlive regiony pro tuto iteraci.
@@ -576,7 +577,7 @@ class FaceEmoteController:
             and not self.whole_region["active"]
             and requests["eye"]["source"] is None
         ):
-            if proximity_value > BOOP_PROXIMITY_THRESHOLD:
+            if proximity_value > boop_threshold:
                 requests["eye"]["source"] = self.eye_boop_emote
                 requests["eye"]["duration"] = self.boop_timer
 

@@ -30,6 +30,9 @@ NVM_MAGIC = b"PFS3"
 NVM_FLAG_BYTES = 2
 LOG_BUFFER_SIZE = 100
 DEBUG_UI_UPDATE_INTERVAL = 1.0
+BOOP_AUTO_TUNE_WINDOW = 1.0
+BOOP_SPIKE_MARGIN = 20
+BOOP_MAX_THRESHOLD = 255
 SETTING_ENV_KEYS = {
     "Accelerometer": "ACCELEROMETER_ON",
     "Boop": "APDS_ON",
@@ -78,6 +81,50 @@ logger = None
 server = None
 ui = None
 perf = None
+boop_threshold_tracker = None
+boop_threshold = emotes.BOOP_PROXIMITY_THRESHOLD
+
+
+class BoopThresholdTracker:
+    """Detekuje boop jako nahly narust proti poslednim namerenym hodnotam."""
+
+    def __init__(
+        self,
+        window_seconds=BOOP_AUTO_TUNE_WINDOW,
+        spike_margin=BOOP_SPIKE_MARGIN,
+        fallback_threshold=emotes.BOOP_PROXIMITY_THRESHOLD,
+    ):
+        self.window_seconds = window_seconds
+        self.spike_margin = spike_margin
+        self.fallback_threshold = fallback_threshold
+        self.samples = []
+        self.threshold = fallback_threshold
+
+    def update(self, value, now=None):
+        """Vrati threshold pro detekci nahleho skoku a ulozi novy vzorek."""
+        if now is None:
+            now = time.monotonic()
+
+        self._trim(now)
+
+        if value is None:
+            return self.threshold
+
+        self.threshold = self._calculate_threshold()
+        self.samples.append((now, int(value)))
+        return self.threshold
+
+    def _trim(self, now):
+        oldest_allowed = now - self.window_seconds
+        while self.samples and self.samples[0][0] < oldest_allowed:
+            self.samples.pop(0)
+
+    def _calculate_threshold(self):
+        if not self.samples:
+            return self.fallback_threshold
+
+        baseline = sum(sample[1] for sample in self.samples) // len(self.samples)
+        return min(BOOP_MAX_THRESHOLD, baseline + self.spike_margin)
 
 
 class ListHandler(logging.Handler):
@@ -671,6 +718,8 @@ if MIC_ON:
 if APDS_ON:
     apds = APDSSensor()
 
+boop_threshold_tracker = BoopThresholdTracker()
+
 if SSD1306_ON:
     oled = OLEDDisplay()
 
@@ -710,6 +759,7 @@ while True:
     movement = accelerometer.derivation() if ACCELEROMETER_ON and accelerometer is not None else None
     mic_value = mic.get_value() if MIC_ON and MIC_READ_ON else None
     proximity_value = apds.get_value() if APDS_ON and apds is not None else None
+    boop_threshold = boop_threshold_tracker.update(proximity_value)
     perf.end_section()
 
     # 1.5) Přečti ESP komunikaci
@@ -797,6 +847,7 @@ while True:
                     f"Acc: {movement_text}",
                     f"Mic: {mic_value}",
                     f"APDS: {proximity_value}",
+                    f"Boop T: {boop_threshold}",
                 ] + perf.format_debug_lines())
                 last_debug_ui_update = now
         ui_event = ui.handle_input(
@@ -828,6 +879,7 @@ while True:
             device_clock=device_clock if WIFI_ON else None,
             mic_value=mic_value,
             proximity_value=proximity_value,
+            boop_threshold=boop_threshold,
         )
     perf.end_section()
 
@@ -875,7 +927,7 @@ while True:
         if APDS_ON:
             # print(apds.scan())
             #print(apds.get_color())
-            message = f"APDS: {proximity_value}"
+            message = f"APDS: {proximity_value} / Boop T: {boop_threshold}"
             iteration_logs.append(message)
             logger.info(message)
 
