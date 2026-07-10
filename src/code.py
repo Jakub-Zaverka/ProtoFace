@@ -25,8 +25,8 @@ import espnow
 import struct
 
 # Identifikator a mapa bitu pro ulozeni runtime voleb do `microcontroller.nvm`.
-NVM_MAGIC = b"PFS2"
-OLD_NVM_MAGIC = b"PFS1"
+NVM_MAGIC = b"PFS3"
+# OLD_NVM_MAGIC = b"PFS1"
 NVM_FLAG_BYTES = 2
 LOG_BUFFER_SIZE = 100
 DEBUG_UI_UPDATE_INTERVAL = 1.0

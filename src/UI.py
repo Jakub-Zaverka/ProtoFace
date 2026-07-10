@@ -1,7 +1,7 @@
 """Program ridi OLED menu, debug obrazovku a ovladani emote i nastaveni."""
 
 # UI pracuje s OLED textovym vystupem a volitelnym HTTP ovladanim.
-from I2C_sim import OLEDDisplay
+from I2C_sim import FONT_CHAR_WIDTH, FONT_LINE_HEIGHT, OLEDDisplay
 from server import ServerClass
 
 # Konstanty pro nazvy obrazovek a geometrii textoveho layoutu.
@@ -12,10 +12,10 @@ SCREEN_EMOTE_DETAIL = "emote_detail"
 SCREEN_SETTINGS_MENU = "settings_menu"
 SCREEN_DEBUG_MENU = "debug_menu"
 CLOCK_Y = 0
-LINE_HEIGHT = 8
-CHAR_WIDTH = 6
+LINE_HEIGHT = FONT_LINE_HEIGHT
+CHAR_WIDTH = FONT_CHAR_WIDTH
 CLOCK_PADDING = 2
-MAX_VISIBLE_LIST_ROWS = 6
+MAX_VISIBLE_LIST_ROWS = 4
 
 EVENT_SETTING_SELECTED = "setting_selected"
 

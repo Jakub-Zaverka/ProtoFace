@@ -35,10 +35,14 @@ static const gpio_num_t WAKE_D2 = GPIO_NUM_2;
 static const gpio_num_t WAKE_D3 = GPIO_NUM_21;
 
 static const unsigned long SLEEP_THRESHOLD_TIME = 30 * 1000; // 30s
+static const unsigned long BUTTON_REPEAT_BLOCK_MS = 400;
 static unsigned long last_input_time = 0;
 // Globalni instance zpravy.
 // Funkce loop() ji pred kazdym odeslanim upravi a posle receiveru.
 ControlMessage msg;
+
+bool previousButtonStates[4] = {false, false, false, false};
+unsigned long lastButtonSendTimes[4] = {0, 0, 0, 0};
 
 // Callback funkce, kterou ESP-NOW zavola po kazdem pokusu o odeslani.
 // Podle hodnoty status zjistime, jestli se zpravu povedlo predat.
@@ -147,6 +151,29 @@ void enterLightSleep()
         gpio_wakeup_disable(WAKE_D2);
         gpio_wakeup_disable(WAKE_D3);
     }
+
+bool sendButtonPress(uint8_t buttonIndex, const char *label)
+{
+    msg.button1 = buttonIndex == 0;
+    msg.button2 = buttonIndex == 1;
+    msg.button3 = buttonIndex == 2;
+    msg.button4 = buttonIndex == 3;
+
+    esp_err_t result = esp_now_send(receiverMac, (uint8_t *)&msg, sizeof(msg));
+    if (result == ESP_OK)
+    {
+        Serial.print("Odeslano, counter = ");
+        ++msg.counter;
+        Serial.println(msg.counter);
+        Serial.println(label);
+        last_input_time = millis();
+        return true;
+    }
+
+    Serial.print("Chyba pri esp_now_send(): ");
+    Serial.println(result);
+    return false;
+}
 
 void setup()
 {
@@ -273,77 +300,35 @@ void loop()
     }
 
 
-    if (digitalRead(D0) == LOW || debug_value == 'w')
+    bool currentButtonStates[4] = {
+        digitalRead(D0) == LOW,
+        digitalRead(D1) == LOW,
+        digitalRead(D2) == LOW,
+        digitalRead(D3) == LOW,
+    };
+    const char debugKeys[4] = {'w', 's', 'd', 'a'};
+    const char *buttonLabels[4] = {"Up", "Down", "Ok", "Home"};
+    unsigned long now = millis();
+
+    for (uint8_t index = 0; index < 4; index++)
     {
-        msg.button1 = true;
-        esp_err_t result = esp_now_send(receiverMac, (uint8_t *)&msg, sizeof(msg));
-        if (result == ESP_OK)
+        bool debugPressed = debug_value == debugKeys[index];
+        bool newPhysicalPress = currentButtonStates[index] && !previousButtonStates[index];
+        bool repeatAllowed = now - lastButtonSendTimes[index] >= BUTTON_REPEAT_BLOCK_MS;
+
+        if ((newPhysicalPress || debugPressed) && repeatAllowed)
         {
-            Serial.print("Odeslano, counter = ");
-            ++msg.counter;
-            Serial.println(msg.counter);
-            Serial.println("Up");
+            if (sendButtonPress(index, buttonLabels[index]))
+            {
+                lastButtonSendTimes[index] = now;
+            }
+            break;
         }
-        else
-        {
-            Serial.print("Chyba pri esp_now_send(): ");
-            Serial.println(result);
-        }
-        last_input_time = millis();
     }
-    else if (digitalRead(D1) == LOW || debug_value == 's')
+
+    for (uint8_t index = 0; index < 4; index++)
     {
-        msg.button2 = true;
-        esp_err_t result = esp_now_send(receiverMac, (uint8_t *)&msg, sizeof(msg));
-        if (result == ESP_OK)
-        {
-            Serial.print("Odeslano, counter = ");
-            ++msg.counter;
-            Serial.println(msg.counter);
-            Serial.println("Down");
-        }
-        else
-        {
-            Serial.print("Chyba pri esp_now_send(): ");
-            Serial.println(result);
-        }
-        last_input_time = millis();
-    }
-    else if (digitalRead(D2) == LOW || debug_value == 'd')
-    {
-        msg.button3 = true;
-        esp_err_t result = esp_now_send(receiverMac, (uint8_t *)&msg, sizeof(msg));
-        if (result == ESP_OK)
-        {
-            Serial.print("Odeslano, counter = ");
-            ++msg.counter;
-            Serial.println(msg.counter);
-            Serial.println("Ok");
-        }
-        else
-        {
-            Serial.print("Chyba pri esp_now_send(): ");
-            Serial.println(result);
-        }
-        last_input_time = millis();
-    }
-    else if (digitalRead(D3) == LOW || debug_value == 'a')
-    {
-        msg.button4 = true;
-        esp_err_t result = esp_now_send(receiverMac, (uint8_t *)&msg, sizeof(msg));
-        if (result == ESP_OK)
-        {
-            Serial.print("Odeslano, counter = ");
-            ++msg.counter;
-            Serial.println(msg.counter);
-            Serial.println("Home");
-        }
-        else
-        {
-            Serial.print("Chyba pri esp_now_send(): ");
-            Serial.println(result);
-        }
-        last_input_time = millis();
+        previousButtonStates[index] = currentButtonStates[index];
     }
 
     delay(100);

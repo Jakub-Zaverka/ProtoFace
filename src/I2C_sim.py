@@ -8,6 +8,13 @@ import adafruit_ssd1306
 OLED_WIDTH = 128
 OLED_HEIGHT = 64
 OLED_ADDRESS = 0x3C
+TEXT_SCALE_NUMERATOR = 3
+TEXT_SCALE_DENOMINATOR = 2
+FONT_GLYPH_WIDTH = 5
+FONT_GLYPH_HEIGHT = 7
+FONT_RENDER_HEIGHT = 11
+FONT_CHAR_WIDTH = 9
+FONT_LINE_HEIGHT = 12
 
 _shared_i2c = None
 
@@ -269,17 +276,17 @@ class OLEDDisplay:
         for char in str(text):
             if char == "\n":
                 cursor_x = x
-                cursor_y += 8
+                cursor_y += FONT_LINE_HEIGHT
                 continue
 
             self._draw_char(char, cursor_x, cursor_y, color=color)
-            cursor_x += 6
+            cursor_x += FONT_CHAR_WIDTH
 
-            if cursor_x + 5 > self.width:
+            if cursor_x + FONT_CHAR_WIDTH > self.width:
                 cursor_x = x
-                cursor_y += 8
+                cursor_y += FONT_LINE_HEIGHT
 
-            if cursor_y + 7 > self.height:
+            if cursor_y + FONT_RENDER_HEIGHT > self.height:
                 break
 
     def _draw_char(self, char, x, y, color=1):
@@ -291,5 +298,20 @@ class OLEDDisplay:
         for column, bits in enumerate(glyph):
             for row in range(7):
                 if bits & (1 << row):
-                    if 0 <= x + column < self.width and 0 <= y + row < self.height:
-                        self.display.pixel(x + column, y + row, color)
+                    self._draw_scaled_pixel(x, y, column, row, color)
+
+    def _draw_scaled_pixel(self, x, y, column, row, color=1):
+        """Zvetsi jeden pixel bitmapoveho fontu na zhruba 150 %."""
+        scale_num = TEXT_SCALE_NUMERATOR
+        scale_den = TEXT_SCALE_DENOMINATOR
+        start_x = (column * scale_num) // scale_den
+        end_x = ((column + 1) * scale_num + scale_den - 1) // scale_den
+        start_y = (row * scale_num) // scale_den
+        end_y = ((row + 1) * scale_num + scale_den - 1) // scale_den
+
+        for pixel_x in range(x + start_x, x + end_x):
+            if pixel_x < 0 or pixel_x >= self.width:
+                continue
+            for pixel_y in range(y + start_y, y + end_y):
+                if 0 <= pixel_y < self.height:
+                    self.display.pixel(pixel_x, pixel_y, color)
