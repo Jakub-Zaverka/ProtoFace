@@ -33,6 +33,7 @@ DEBUG_UI_UPDATE_INTERVAL = 1.0
 BOOP_AUTO_TUNE_WINDOW = 1.0
 BOOP_SPIKE_MARGIN = 20
 BOOP_MAX_THRESHOLD = 255
+BOOP_SAMPLE_FREEZE_AFTER_SPIKE = 1.0
 SETTING_ENV_KEYS = {
     "Accelerometer": "ACCELEROMETER_ON",
     "Boop": "APDS_ON",
@@ -93,25 +94,39 @@ class BoopThresholdTracker:
         window_seconds=BOOP_AUTO_TUNE_WINDOW,
         spike_margin=BOOP_SPIKE_MARGIN,
         fallback_threshold=emotes.BOOP_PROXIMITY_THRESHOLD,
+        freeze_after_spike=BOOP_SAMPLE_FREEZE_AFTER_SPIKE,
     ):
         self.window_seconds = window_seconds
         self.spike_margin = spike_margin
         self.fallback_threshold = fallback_threshold
+        self.freeze_after_spike = freeze_after_spike
         self.samples = []
         self.threshold = fallback_threshold
+        self.freeze_until = 0.0
 
-    def update(self, value, now=None):
-        """Vrati threshold pro detekci nahleho skoku a ulozi novy vzorek."""
+    def update(self, value, now=None, freeze=False):
+        """Vrati threshold a vzorkuje jen hodnoty mimo aktivni boop."""
         if now is None:
             now = time.monotonic()
 
-        self._trim(now)
-
         if value is None:
+            self._trim(now)
             return self.threshold
 
+        value = int(value)
+        frozen = freeze or now < self.freeze_until
+        if not frozen:
+            self._trim(now)
+
         self.threshold = self._calculate_threshold()
-        self.samples.append((now, int(value)))
+        if frozen:
+            return self.threshold
+
+        if value > self.threshold:
+            self.freeze_until = now + self.freeze_after_spike
+            return self.threshold
+
+        self.samples.append((now, value))
         return self.threshold
 
     def _trim(self, now):
@@ -121,7 +136,7 @@ class BoopThresholdTracker:
 
     def _calculate_threshold(self):
         if not self.samples:
-            return self.fallback_threshold
+            return self.threshold
 
         baseline = sum(sample[1] for sample in self.samples) // len(self.samples)
         return min(BOOP_MAX_THRESHOLD, baseline + self.spike_margin)
@@ -759,7 +774,11 @@ while True:
     movement = accelerometer.derivation() if ACCELEROMETER_ON and accelerometer is not None else None
     mic_value = mic.get_value() if MIC_ON and MIC_READ_ON else None
     proximity_value = apds.get_value() if APDS_ON and apds is not None else None
-    boop_threshold = boop_threshold_tracker.update(proximity_value)
+    boop_active = face_emotes is not None and face_emotes.is_boop_active()
+    boop_threshold = boop_threshold_tracker.update(
+        proximity_value,
+        freeze=boop_active,
+    )
     perf.end_section()
 
     # 1.5) Přečti ESP komunikaci
