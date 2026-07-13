@@ -2,7 +2,7 @@
 
 Technicka dokumentace projektu pro `Adafruit MatrixPortal S3` v `CircuitPython`.
 
-Projekt zobrazuje animovany oblicej na RGB LED matici `64x32`, ovladaci menu na OLED `SSD1306`, reaguje na mikrofon, proximity senzor a akcelerometr a umi volitelne pripojit Wi-Fi, synchronizovat cas a vystavit jednoduche HTTP ovladani.
+Projekt zobrazuje animovany oblicej na HUB75 RGB LED matici `128x32` slozene ze dvou `64x32` panelu, ovladaci menu na OLED `SSD1306`, reaguje na mikrofon, proximity senzor a akcelerometr a umi volitelne pripojit Wi-Fi, synchronizovat cas a vystavit jednoduche HTTP ovladani.
 
 ## Co projekt umi
 
@@ -13,10 +13,11 @@ Projekt zobrazuje animovany oblicej na RGB LED matici `64x32`, ovladaci menu na 
 - posouvat oblicej podle pohybu z akcelerometru
 - zobrazit OLED menu pro emote, nastaveni a debug
 - pres Wi-Fi synchronizovat cas a zobrazovat ho na OLED i RGB matici
-- prijimat jednoduche HTTP prikazy `up`, `down`, `ok` jako dalkove ovladani menu
+- prijimat jednoduche HTTP prikazy `up`, `down`, `ok`, `back` jako dalkove ovladani menu
 - merit odezvu hlavni smycky, vytizeni runtime, pomale sekce a volnou pamet
 - aplikovat globalni rainbow/wave barevny efekt s omezenou obnovovaci frekvenci
 - prijimat ovladani menu z externiho ESP32 ovladace pres ESP-NOW
+- menit jas RGB matice a PWM vykon ventilatoru pres OLED menu
 
 ## Cilovy hardware
 
@@ -24,11 +25,12 @@ Aktualni projekt odpovida konfiguraci:
 
 - deska: `Adafruit MatrixPortal S3`
 - firmware: `Adafruit CircuitPython 10.1.4`
-- hlavni vystup: HUB75 RGB matrix `64x32`
+- hlavni vystup: HUB75 RGB matrix `128x32` jako dva `64x32` panely
 - OLED: `SSD1306 128x64` na `0x3C`
 - proximity senzor: `APDS9960`
 - akcelerometr: `LIS3DH` na `0x19`
 - mikrofon: analogovy vstup `A3`
+- ventilator: PWM vystup `A1`
 - tlacitka:
   - `BUTTON_UP`
   - `BUTTON_DOWN`
@@ -74,12 +76,13 @@ Ze standardnich modulu CircuitPython se pouzivaji napr.:
   - instrumentace vykonu pres `PerformanceMonitor`
 
 - `display.py`
-  - wrapper nad HUB75 RGB matici
-  - vytvareni regionu
+  - wrapper nad HUB75 RGB matici `128x32`
+  - vytvareni regionu pro levou i pravou fyzickou stranu
   - nacitani BMP a GIF snimku do oblasti displeje
   - cache nactenych BMP assetu v RGB565
   - rychla cesta `update_matrix_rgb565()` pro uz prevedene pixely
   - globalni rainbow efekt s throttlingem pres `RAINBOW_FRAME_SKIP`
+  - globalni jas pres `BRIGHTNESS_STEPS`
 
 - `emotes.py`
   - definice emote zdroju
@@ -112,7 +115,7 @@ Ze standardnich modulu CircuitPython se pouzivaji napr.:
 - `../controller/`
   - PlatformIO firmware pro externi ESP32 ovladac
   - posila `ControlMessage` pres ESP-NOW
-  - ovlada OLED menu pres akce up, down a ok
+  - ovlada OLED menu pres akce up, down, ok a back
 
 - `clock.py`
   - synchronizace RTC pres NTP
@@ -181,7 +184,8 @@ Jednotlive casti smycky jsou merene jako sekce:
 
 ## Rozlozeni RGB matice
 
-`Display` v `display.py` deli matici `64x32` na ctyri regiony:
+`Display` v `display.py` pracuje s fyzickou matici `128x32`, kde jsou dve strany
+po `64x32`. Kazda strana ma stejne ctyri regiony:
 
 - `nose`
   - pozice `0,0`
@@ -199,7 +203,16 @@ Jednotlive casti smycky jsou merene jako sekce:
   - pozice `0,0`
   - velikost `64x32`
 
-Normalni oblicej je slozeny z `eye`, `nose`, `mouth`. Kdyz je aktivni `whole`, tri caste regiony se skryji.
+Leva strana pouziva regiony `nose`, `eye`, `mouth`, `whole`. Prava strana
+pouziva `nose_right`, `eye_right`, `mouth_right`, `whole_right` a je posunuta o
+`RIGHT_PANEL_X_OFFSET = 64`.
+
+Normalni oblicej je slozeny z `eye`, `nose`, `mouth`. Kdyz je aktivni `whole`,
+tri caste regiony se skryji. `FaceEmoteController` aplikuje stejne pozadavky na
+vsechny fyzicke sady regionu, takze oba panely ukazuji stejnou emote logiku.
+
+Prvni fyzicka strana je v kodu zrcadlena pres `mirror_x=True` a
+`mirror_position_x=True`, aby obraz sedel na zapojeni panelu.
 
 ### Vykonove optimalizace displeje
 
@@ -234,11 +247,15 @@ UI je definovane v `UI.py` jako jednoduchy stavovy automat.
   - predchozi polozka
   - navrat z detailni obrazovky
 
+Externi ESP32 controller posila pres ESP-NOW stejne akce vcetne samostatneho
+`back` tlacitka.
+
 Stejne akce umi simulovat i HTTP API:
 
 - `GET /up`
 - `GET /down`
 - `GET /ok`
+- `GET /api/action/back`
 
 ### Polozky menu
 
@@ -250,18 +267,17 @@ Hlavni menu:
 
 Menu emote:
 
-- `Gif`
 - `Clock`
 - `Cross`
 - `Open eye`
 - `Sleep`
-- `Dice`
 - `Back`
 
 Menu nastaveni:
 
 - `Display`
 - `Brightness`
+- `Fan`
 - `Boop`
 - `Boop Rainbow`
 - `Rainbow Override`
@@ -343,12 +359,6 @@ Pri otevrenem detailu emote ma menu prioritu nad automatickymi reakcemi.
   - fullscreen hodiny vykreslene vlastnim 5x7 fontem se skalovanim `2x`
   - bitmapa hodin se cachuje a prekresli se jen pri zmene textu casu
 
-- `Gif`
-  - fullscreen GIF `giphy.gif`
-
-- `Dice`
-  - fullscreen GIF `dice.gif`
-
 - `Cross`
   - kriz v regionu oka
 
@@ -357,6 +367,10 @@ Pri otevrenem detailu emote ma menu prioritu nad automatickymi reakcemi.
 
 - `Open eye`
   - otevrene oko a mluvici usta
+
+`FaceEmoteController` ma v kodu pripravenou i podporu pro `Gif`, `Dice` a
+`Color`, ale aktualni `UI.py` je v menu nezobrazuje. Pro jejich zpristupneni je
+potreba je pridat do `self.emotes_menu_items`.
 
 ## Konfigurace
 
@@ -403,11 +417,14 @@ Pouzivane klice:
 - `RAINBOW_OVERRIDE_ON`
 - `VERBOSE`
 
+`BLINK_ON` a `DISPLAY_ON` nejsou v `settings.example.toml` uvedene, ale runtime
+je podporuje a pri chybejici hodnote pouzije vychozi `true`.
+
 ### Runtime perzistence
 
 Toggle hodnoty z UI se ukladaji do `microcontroller.nvm`.
 
-- pouziva se magic hlavicka `PFS2`
+- pouziva se magic hlavicka `PFS3`
 - stavy jsou ulozene jako bitove pole
 - runtime nastaveni ma prioritu nad `settings.toml`
 
@@ -415,6 +432,7 @@ Pres UI lze za behu menit:
 
 - `Display`
 - `Brightness`
+- `Fan`
 - `Boop`
 - `Boop Rainbow`
 - `Rainbow Override`
@@ -513,6 +531,15 @@ if active_menu_emote == "happy":
 6. restartovat zarizeni
 
 Po restartu se automaticky spusti `code.py`.
+
+Z korene repozitare lze pouzit helper:
+
+```powershell
+.\deploy_portal.ps1
+```
+
+Skript najde disk `CIRCUITPY`, zkopiruje obsah `src/` bez `settings.toml`,
+vytvori `.reload` a otevire serial monitor na `COM4`.
 
 ## Ladeni
 
@@ -632,9 +659,12 @@ Krome `print()` se logy ukladaji i do vnitrniho list bufferu.
 README odpovida aktualnimu kodu v repozitari, vcetne:
 
 - HTTP serveru v `server.py`
-- endpointu `/api/perf`
+- endpointu `/api/perf` a `/api/action/back`
 - debug obrazovky v `UI.py`
-- tritiho tlacitka na `A4`
+- lokalnich tlacitek `BUTTON_UP`, `BUTTON_DOWN`, `A4`
+- ctyrtlacitkoveho ESP-NOW controlleru s `button4` jako `back`
+- menu nastaveni `Brightness` a `Fan`
+- NVM hlavicky `PFS3`
 - `BLINK_ON`, `DISPLAY_ON`, `BOOP_RAINBOW_ON` a `RAINBOW_OVERRIDE_ON` runtime nastaveni
 - performance mereni v `performance.py`
 - cache BMP assetu a rychle RGB565 cesty v `display.py`
