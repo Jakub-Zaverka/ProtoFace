@@ -349,7 +349,11 @@ class FaceEmoteController:
         self.eye_load_emote = create_gif_emote("/faces/giphy.gif", "load", loop=False)
         self.cross_emote = create_image_emote("/faces/cross.bmp", "cross")
         self.whole_dice_roll = create_gif_emote("/faces/dice.gif", "dice", loop=False)
-        self.color_test = create_image_emote("/faces/test_colors.bmp","color")
+        #self.color_test = create_image_emote("/faces/test_colors.bmp","color")
+        self.mouth_blep_emote = create_image_emote("/faces/blep.bmp", "blep")
+        self.eye_hearth_emote = create_image_emote("/faces/hearth.bmp", "hearth")
+        self.eye_question_emote = create_image_emote("/faces/question.bmp", "question")
+        self.mouth_flat_emote = create_image_emote("/faces/flat_mouth.bmp", "flat")
         # Template: sem pridej novy asset pro emote.
         # self.eye_happy_emote = create_image_emote("/faces/eye_happy.bmp", "happy")
         # self.mouth_smile_emote = create_image_emote("/faces/mouth_smile.bmp", "smile")
@@ -472,15 +476,15 @@ class FaceEmoteController:
             requests["whole"]["duration"] = 1
             return True
 
-        if active_menu_emote == "gif":
-            requests["whole"]["source"] = self.eye_load_emote
-            requests["whole"]["duration"] = 1
-            return True
+        # if active_menu_emote == "gif":
+        #     requests["whole"]["source"] = self.eye_load_emote
+        #     requests["whole"]["duration"] = 1
+        #     return True
         
-        if active_menu_emote == "dice":
-            requests["whole"]["source"] = self.whole_dice_roll
-            requests["whole"]["duration"] = 1
-            return True
+        # if active_menu_emote == "dice":
+        #     requests["whole"]["source"] = self.whole_dice_roll
+        #     requests["whole"]["duration"] = 1
+        #     return True
 
         if active_menu_emote == "cross":
             requests["eye"]["source"] = self.cross_emote
@@ -499,10 +503,34 @@ class FaceEmoteController:
             requests["mouth"]["duration"] = 1
             return True
         
-        if active_menu_emote == "color":
-            requests["eye"]["source"] = self.color_test
+        # if active_menu_emote == "color":
+        #     requests["eye"]["source"] = self.color_test
+        #     requests["eye"]["duration"] = 1
+        #     requests["mouth"]["source"] = self.color_test
+        #     requests["mouth"]["duration"] = 1
+        #     return True
+
+        if active_menu_emote == "Hearth":
+            requests["eye"]["source"] = self.eye_hearth_emote
             requests["eye"]["duration"] = 1
-            requests["mouth"]["source"] = self.color_test
+            return True
+
+        if active_menu_emote == "Question":
+            requests["eye"]["source"] = self.eye_question_emote
+            requests["eye"]["duration"] = 1
+            return True
+
+        if active_menu_emote == "Narrow":
+            requests["eye"]["source"] = self.eye_blink_emote
+            requests["eye"]["duration"] = 1
+            requests["mouth"]["source"] = self.mouth_flat_emote
+            requests["mouth"]["duration"] = 1
+            return True
+
+        if active_menu_emote == "Dead":
+            requests["eye"]["source"] = self.cross_emote
+            requests["eye"]["duration"] = 1
+            requests["mouth"]["source"] = self.mouth_blep_emote
             requests["mouth"]["duration"] = 1
             return True
 
