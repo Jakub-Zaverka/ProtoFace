@@ -23,6 +23,7 @@ from server import ServerClass
 from performance import PerformanceMonitor
 import espnow
 import struct
+import pwmio
 
 # Identifikator a mapa bitu pro ulozeni runtime voleb do `microcontroller.nvm`.
 NVM_MAGIC = b"PFS3"
@@ -84,6 +85,9 @@ ui = None
 perf = None
 boop_threshold_tracker = None
 boop_threshold = emotes.BOOP_PROXIMITY_THRESHOLD
+fan_pwm = None
+FAN_SPEED_STEPS = (0, 50, 100)
+FAN_SPEED_PERCENT = 0
 
 
 class BoopThresholdTracker:
@@ -299,6 +303,27 @@ def persist_runtime_setting(setting_name, value):
     return persist_boolean_setting(key, value)
 
 
+def set_fan_speed(percent):
+    """Nastavi PWM vykon ventilatoru v rozsahu 0 az 100 procent."""
+    global FAN_SPEED_PERCENT
+
+    percent = max(0, min(100, int(percent)))
+    FAN_SPEED_PERCENT = percent
+    if fan_pwm is not None:
+        fan_pwm.duty_cycle = round(percent * 65535 / 100)
+
+
+def cycle_fan_speed():
+    """Posune ventilator na dalsi preddefinovany vykon."""
+    try:
+        current_index = FAN_SPEED_STEPS.index(FAN_SPEED_PERCENT)
+    except ValueError:
+        current_index = 0
+
+    set_fan_speed(FAN_SPEED_STEPS[(current_index + 1) % len(FAN_SPEED_STEPS)])
+    return FAN_SPEED_PERCENT
+
+
 def initialize_display_stack():
     """Vytvori RGB matici, regiony obliceje a controller emote."""
     global display
@@ -511,6 +536,10 @@ def toggle_setting(setting_name):
             initialize_display_stack()
         return setting_name
 
+    if setting_name == "Fan":
+        cycle_fan_speed()
+        return setting_name
+
     if setting_name == "Wifi":
         # Vypnuti Wi-Fi zastavi HTTP server, zapnuti udela connect, sync hodin a start API.
         if WIFI_ON:
@@ -585,6 +614,7 @@ def get_setting_values():
         "Rainbow Override": RAINBOW_OVERRIDE_ON,
         "Blink": BLINK_ON,
         "Brightness": display_module.get_brightness_scale(),
+        "Fan": FAN_SPEED_PERCENT,
         "Wifi": WIFI_ON,
         "Accelerometer": ACCELEROMETER_ON,
         "Verbose": VERBOSE,
@@ -762,6 +792,15 @@ perf = PerformanceMonitor(report_interval=5.0)
 last_debug_ui_update = 0.0
 if server is not None:
     server.set_performance_provider(get_performance_snapshot)
+
+
+# PWM vystup pro ridici vodic ventilatoru na A1.
+fan_pwm = pwmio.PWMOut(
+    board.A1,
+    frequency=25_000,
+    duty_cycle=0
+)
+set_fan_speed(FAN_SPEED_PERCENT)
 
 # Hlavni smycka pravidelne cte vstupy, aktualizuje UI a prekresluje vystupy.
 while True:

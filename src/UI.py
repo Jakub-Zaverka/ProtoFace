@@ -29,7 +29,7 @@ class UI():
         # Tyto seznamy urcuji, co se v menu skutecne zobrazi a v jakem poradi.
         self.main_menu_items = ["Emotes", "Settings", "Debug"]
         self.emotes_menu_items = ["Clock", "Cross", "Open eye", "Sleep", "Back"]
-        self.settings_menu_items = ["Display", "Brightness", "Boop", "Boop Rainbow", "Rainbow Override", "Mic", "Blink", "Accelerometer", "Wifi", "Verbose", "Back"]
+        self.settings_menu_items = ["Display", "Brightness", "Fan", "Boop", "Boop Rainbow", "Rainbow Override", "Mic", "Blink", "Accelerometer", "Wifi", "Verbose", "Back"]
         self.debug_lines = []
         self.setting_values = {
             "Display": False,
@@ -42,6 +42,7 @@ class UI():
             "Mic": False,
             "Blink": False,
             "Brightness": 0.5,
+            "Fan": 0,
         }
         self.main_selected_index = 0
         self.emotes_selected_index = 0
@@ -425,6 +426,8 @@ class UI():
         """Prevede interní hodnotu nastaveni na text pro OLED a web."""
         if name == "Brightness":
             return "{:.1f}".format(float(value))
+        if name == "Fan":
+            return "{}%".format(int(value))
         return "ON" if bool(value) else "OFF"
 
     def render_emotes(self):
