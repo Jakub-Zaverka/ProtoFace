@@ -631,6 +631,27 @@ def get_clock_text():
     return "{:02}:{:02}".format(now.tm_hour, now.tm_min)
 
 
+def format_debug_value(value):
+    """Prevede chybejici debug hodnotu na kratky placeholder."""
+    if value is None:
+        return "--"
+    return str(value)
+
+
+def build_debug_lines(movement, mic_value, proximity_value, boop_threshold):
+    """Sestavi radky pro OLED debug obrazovku."""
+    movement_text = "--"
+    if movement is not None:
+        movement_text = "{:.2f},{:.2f}".format(movement[0], movement[1])
+
+    return [
+        f"Acc: {movement_text}",
+        f"Mic: {format_debug_value(mic_value)}",
+        f"APDS: {format_debug_value(proximity_value)}",
+        f"Boop T: {format_debug_value(boop_threshold)}",
+    ] + perf.format_debug_lines()
+
+
 def sync_ui_settings(ui):
     """Propise aktualni runtime volby do OLED UI."""
     for setting_name, setting_value in get_setting_values().items():
@@ -654,11 +675,6 @@ def process_ui_inputs(ui, server, *, confirm_click=False, next_click=False, prev
 
     sync_ui_settings(ui)
     ui.set_clock_text(get_clock_text())
-    ui.set_debug_lines([
-        "Acc: --",
-        "Mic: --",
-        "APDS: --",
-    ])
 
     ui_event = ui.handle_input(
         confirm_click=confirm_click,
@@ -810,8 +826,9 @@ while True:
 
     # 1) Nacti vstupy ze senzoru.
     perf.begin_section("sensors")
+    debug_screen_active = ui is not None and ui.active_screen == SCREEN_DEBUG_MENU
     movement = accelerometer.derivation() if ACCELEROMETER_ON and accelerometer is not None else None
-    mic_value = mic.get_value() if MIC_ON and MIC_READ_ON else None
+    mic_value = mic.get_value() if MIC_ON and mic is not None and (MIC_READ_ON or debug_screen_active) else None
     proximity_value = apds.get_value() if APDS_ON and apds is not None else None
     boop_active = face_emotes is not None and face_emotes.is_boop_active()
     boop_threshold = boop_threshold_tracker.update(
@@ -893,21 +910,9 @@ while True:
     if ui is not None:
         sync_ui_settings(ui)
         ui.set_clock_text(get_clock_text())
+        was_debug_screen = ui.active_screen == SCREEN_DEBUG_MENU
         if esp_back_click:
             ui.go_back()
-        if ui.active_screen == SCREEN_DEBUG_MENU:
-            now = time.monotonic()
-            if now - last_debug_ui_update >= DEBUG_UI_UPDATE_INTERVAL:
-                movement_text = "--"
-                if movement is not None:
-                    movement_text = "{:.2f},{:.2f}".format(movement[0], movement[1])
-                ui.set_debug_lines([
-                    f"Acc: {movement_text}",
-                    f"Mic: {mic_value}",
-                    f"APDS: {proximity_value}",
-                    f"Boop T: {boop_threshold}",
-                ] + perf.format_debug_lines())
-                last_debug_ui_update = now
         ui_event = ui.handle_input(
             confirm_click=up_click or esp_confirm_click,
             next_click=down_click or esp_next_click,
@@ -915,6 +920,20 @@ while True:
             server=server
         )
         active_menu_emote = ui.get_active_menu_emote()
+        if ui.active_screen == SCREEN_DEBUG_MENU:
+            now = time.monotonic()
+            if not was_debug_screen or now - last_debug_ui_update >= DEBUG_UI_UPDATE_INTERVAL:
+                if not was_debug_screen and mic_value is None and MIC_ON and mic is not None:
+                    mic_value = mic.get_value()
+                ui.set_debug_lines(
+                    build_debug_lines(
+                        movement,
+                        mic_value,
+                        proximity_value,
+                        boop_threshold,
+                    )
+                )
+                last_debug_ui_update = now
 
     # 5) Preved udalost z UI na zmenu runtime nastaveni.
     new_setting = handle_ui_event(ui_event)

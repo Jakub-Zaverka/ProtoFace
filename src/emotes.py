@@ -75,6 +75,13 @@ def _get_source_type(source):
     return "image"
 
 
+def _get_source_color_override(source):
+    """Vrati volitelnou RGB barvu, kterou ma emote vynutit."""
+    if isinstance(source, dict):
+        return source.get("color_override")
+    return None
+
+
 def _clear_region_player(region):
     """Uvolni GIF prehravac prirazeny k regionu."""
     player = region["player"]
@@ -215,23 +222,29 @@ def get_emote_name(region):
     return _get_source_name(region["current_source"])
 
 
-def create_image_emote(path, name=None):
+def create_image_emote(path, name=None, color_override=None):
     """Zabali bitmapovy asset do struktury pouzivane controllerem."""
-    return {
+    emote = {
         "type": "image",
         "name": name or path.split("/")[-1],
         "content": path,
     }
+    if color_override is not None:
+        emote["color_override"] = color_override
+    return emote
 
 
-def create_gif_emote(path, name=None, loop=False):
+def create_gif_emote(path, name=None, loop=False, color_override=None):
     """Zabali GIF asset do struktury pouzivane controllerem."""
-    return {
+    emote = {
         "type": "gif",
         "name": name or path.split("/")[-1],
         "content": path,
         "loop": loop,
     }
+    if color_override is not None:
+        emote["color_override"] = color_override
+    return emote
 
 
 def _draw_char(bitmap, char, x, y, scale=2, color=1):
@@ -528,9 +541,13 @@ class FaceEmoteController:
             return True
 
         if active_menu_emote == "Dead":
-            requests["eye"]["source"] = self.cross_emote
+            cross_emote = self.cross_emote.copy()
+            cross_emote["color_override"] = 0xFF0000
+            cross_emote = self.cross_emote.copy()
+            blep_emote["color_override"] = 0xFF0000
+            requests["eye"]["source"] = cross_emote
             requests["eye"]["duration"] = 1
-            requests["mouth"]["source"] = self.mouth_blep_emote
+            requests["mouth"]["source"] = blep_emote
             requests["mouth"]["duration"] = 1
             return True
 
@@ -676,12 +693,10 @@ class FaceEmoteController:
         self._sync_color_effect()
 
     def _sync_color_effect(self):
-        """Synchronizuje rainbow efekt podle boop a override nastaveni."""
+        """Synchronizuje globalni duhu a barevne override aktivnich emotes."""
         if self.rainbow_override_enabled:
             self.display.set_color_effect("rainbow")
-            return
-
-        if (
+        elif (
             self.boop_rainbow_enabled
             and self.is_boop_active()
             and not self.whole_region["active"]
@@ -689,6 +704,21 @@ class FaceEmoteController:
             self.display.set_color_effect("rainbow")
         else:
             self.display.set_color_effect("normal")
+
+        for regions in self.region_sets:
+            for name in ("eye", "nose", "mouth", "whole"):
+                region = regions[name]
+                color_override = _get_source_color_override(
+                    region["current_source"] if region["active"] else None
+                )
+                if color_override is None:
+                    self.display.set_matrix_color_effect(region["matrix"], "normal")
+                else:
+                    self.display.set_matrix_color_effect(
+                        region["matrix"],
+                        "solid",
+                        color_override,
+                    )
 
     def shutdown(self):
         """Uvolni aktivni prehravace driv, nez se vypne displej."""

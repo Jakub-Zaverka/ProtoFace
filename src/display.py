@@ -36,6 +36,7 @@ BRIGHTNESS_SCALE = 0.5
 BRIGHTNESS_STEPS = (0.3, 0.4, 0.5, 0.7, 1.0)
 COLOR_EFFECT_NORMAL = "normal"
 COLOR_EFFECT_RAINBOW = "rainbow"
+COLOR_EFFECT_SOLID = "solid"
 
 RAINBOW_SPEED = 8
 RAINBOW_X_SCALE = 10
@@ -149,6 +150,8 @@ class Display:
             "bitmap": bitmap,
             "base_bitmap": base_bitmap,
             "active_pixels": [],
+            "color_effect": COLOR_EFFECT_NORMAL,
+            "solid_effect_color": 0,
             "tile": tile,
             "position_x": tile_x,
             "source_position_x": position_x,
@@ -275,6 +278,27 @@ class Display:
             self.rainbow_frame_counter = 0
         self._render_all_effects()
 
+    def set_matrix_color_effect(self, matrix_group, effect, color=None):
+        """Nastavi barevny efekt jednoho regionu, pokud neni aktivni globalni duha."""
+        if effect not in (COLOR_EFFECT_NORMAL, COLOR_EFFECT_RAINBOW, COLOR_EFFECT_SOLID):
+            raise ValueError("Unsupported matrix color effect")
+
+        solid_color = matrix_group["solid_effect_color"]
+        if effect == COLOR_EFFECT_SOLID:
+            if color is None:
+                raise ValueError("Solid color effect requires a color")
+            solid_color = self.normalize_color(color)
+
+        if (
+            matrix_group["color_effect"] == effect
+            and matrix_group["solid_effect_color"] == solid_color
+        ):
+            return
+
+        matrix_group["color_effect"] = effect
+        matrix_group["solid_effect_color"] = solid_color
+        self._render_effect_for_matrix(matrix_group)
+
     def deinit(self):
         """Uvolni RGB matici tak, aby sla pozdeji znovu vytvorit."""
         if getattr(self, "window", None) is not None:
@@ -368,7 +392,12 @@ class Display:
         matrix_group["base_bitmap"][x, y] = color
         if color != 0:
             matrix_group["active_pixels"].append((x, y))
-        matrix_group["bitmap"][x, y] = self._apply_color_effect(color, x, y)
+        matrix_group["bitmap"][x, y] = self._apply_color_effect(
+            matrix_group,
+            color,
+            x,
+            y,
+        )
 
     def _render_all_effects(self, visible_only=False):
         """Prekresli vsechny regiony z ulozenych puvodnich pixelu."""
@@ -381,8 +410,9 @@ class Display:
         """Prekresli jeden region podle aktualniho barevneho efektu."""
         base_bitmap = matrix_group["base_bitmap"]
         bitmap = matrix_group["bitmap"]
+        effect = self._get_matrix_color_effect(matrix_group)
 
-        if self.color_effect == COLOR_EFFECT_RAINBOW:
+        if effect == COLOR_EFFECT_RAINBOW:
             wheel = self.rainbow_wheel
             tick_offset = self.effect_tick * RAINBOW_SPEED
             x_scale = RAINBOW_X_SCALE
@@ -396,15 +426,32 @@ class Display:
                     ]
             return
 
+        if effect == COLOR_EFFECT_SOLID:
+            solid_color = matrix_group["solid_effect_color"]
+            for x, y in matrix_group["active_pixels"]:
+                bitmap[x, y] = solid_color if base_bitmap[x, y] != 0 else 0
+            return
+
         for x, y in matrix_group["active_pixels"]:
             bitmap[x, y] = base_bitmap[x, y]
 
-    def _apply_color_effect(self, color, x, y):
+    def _get_matrix_color_effect(self, matrix_group):
+        """Vrati efekt regionu; globalni duha ma vzdy vyssi prioritu."""
+        if self.color_effect == COLOR_EFFECT_RAINBOW:
+            return COLOR_EFFECT_RAINBOW
+        return matrix_group["color_effect"]
+
+    def _apply_color_effect(self, matrix_group, color, x, y):
         """Vrati pixel po aplikaci aktualniho efektu."""
-        if self.color_effect != COLOR_EFFECT_RAINBOW or color == 0:
+        if color == 0:
             return color
 
-        return self._rainbow_rgb565(x, y)
+        effect = self._get_matrix_color_effect(matrix_group)
+        if effect == COLOR_EFFECT_RAINBOW:
+            return self._rainbow_rgb565(x, y)
+        if effect == COLOR_EFFECT_SOLID:
+            return matrix_group["solid_effect_color"]
+        return color
 
     def _create_rainbow_wheel(self):
         """Predpocita jednu periodu rainbow barev v RGB565."""
