@@ -523,27 +523,32 @@ class FaceEmoteController:
         #     requests["mouth"]["duration"] = 1
         #     return True
 
-        if active_menu_emote == "Hearth":
+        if active_menu_emote == "hearth":
             requests["eye"]["source"] = self.eye_hearth_emote
             requests["eye"]["duration"] = 1
             return True
 
-        if active_menu_emote == "Question":
+        if active_menu_emote == "question":
             requests["eye"]["source"] = self.eye_question_emote
             requests["eye"]["duration"] = 1
             return True
 
-        if active_menu_emote == "Narrow":
+        if active_menu_emote == "narrow":
             requests["eye"]["source"] = self.eye_blink_emote
             requests["eye"]["duration"] = 1
             requests["mouth"]["source"] = self.mouth_flat_emote
             requests["mouth"]["duration"] = 1
             return True
 
-        if active_menu_emote == "Dead":
+        if active_menu_emote == "blep":
+            requests["mouth"]["source"] = self.mouth_blep_emote
+            requests["mouth"]["duration"] = 1
+            return True
+
+        if active_menu_emote == "dead":
             cross_emote = self.cross_emote.copy()
             cross_emote["color_override"] = 0xFF0000
-            cross_emote = self.cross_emote.copy()
+            blep_emote = self.mouth_blep_emote.copy()
             blep_emote["color_override"] = 0xFF0000
             requests["eye"]["source"] = cross_emote
             requests["eye"]["duration"] = 1
