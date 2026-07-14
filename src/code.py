@@ -10,6 +10,8 @@ from display import Display
 from accelerometer import Accelerometer
 from mic import Microphone
 from I2C_sim import APDSSensor
+from I2C_sim import cycle_oled_font_scale
+from I2C_sim import get_oled_font_scale_label
 from I2C_sim import OLEDDisplay
 import board
 import digitalio
@@ -536,6 +538,10 @@ def toggle_setting(setting_name):
             initialize_display_stack()
         return setting_name
 
+    if setting_name == "Font":
+        cycle_oled_font_scale()
+        return setting_name
+
     if setting_name == "Fan":
         cycle_fan_speed()
         return setting_name
@@ -614,6 +620,7 @@ def get_setting_values():
         "Rainbow Override": RAINBOW_OVERRIDE_ON,
         "Blink": BLINK_ON,
         "Brightness": display_module.get_brightness_scale(),
+        "Font": get_oled_font_scale_label(),
         "Fan": FAN_SPEED_PERCENT,
         "Wifi": WIFI_ON,
         "Accelerometer": ACCELEROMETER_ON,

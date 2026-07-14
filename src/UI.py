@@ -1,7 +1,7 @@
 """Program ridi OLED menu, debug obrazovku a ovladani emote i nastaveni."""
 
 # UI pracuje s OLED textovym vystupem a volitelnym HTTP ovladanim.
-from I2C_sim import FONT_CHAR_WIDTH, FONT_LINE_HEIGHT, OLEDDisplay
+from I2C_sim import get_font_char_width, get_font_line_height, OLEDDisplay
 from server import ServerClass
 
 # Konstanty pro nazvy obrazovek a geometrii textoveho layoutu.
@@ -12,10 +12,7 @@ SCREEN_EMOTE_DETAIL = "emote_detail"
 SCREEN_SETTINGS_MENU = "settings_menu"
 SCREEN_DEBUG_MENU = "debug_menu"
 CLOCK_Y = 0
-LINE_HEIGHT = FONT_LINE_HEIGHT
-CHAR_WIDTH = FONT_CHAR_WIDTH
 CLOCK_PADDING = 2
-MAX_VISIBLE_LIST_ROWS = 4
 
 EVENT_SETTING_SELECTED = "setting_selected"
 
@@ -29,7 +26,7 @@ class UI():
         # Tyto seznamy urcuji, co se v menu skutecne zobrazi a v jakem poradi.
         self.main_menu_items = ["Emotes", "Settings", "Debug"]
         self.emotes_menu_items = ["Hearth", "Narrow", "Question", "Cross", "Open eye", "Sleep", "Blep", "Dead", "Clock", "Back"]
-        self.settings_menu_items = ["Display", "Brightness", "Fan", "Boop", "Boop Rainbow", "Rainbow Override", "Mic", "Blink", "Accelerometer", "Wifi", "Verbose", "Back"]
+        self.settings_menu_items = ["Display", "Brightness", "Font", "Fan", "Boop", "Boop Rainbow", "Rainbow Override", "Mic", "Blink", "Accelerometer", "Wifi", "Verbose", "Back"]
         self.debug_lines = []
         self.setting_values = {
             "Display": False,
@@ -42,6 +39,7 @@ class UI():
             "Mic": False,
             "Blink": False,
             "Brightness": 0.5,
+            "Font": "1.5x",
             "Fan": 0,
         }
         self.main_selected_index = 0
@@ -231,6 +229,19 @@ class UI():
             if self.active_screen == SCREEN_DEBUG_MENU:
                 self.needs_render = True
 
+    def get_line_height(self):
+        """Vrati aktualni vysku radku OLED fontu."""
+        return get_font_line_height()
+
+    def get_char_width(self):
+        """Vrati aktualni sirku znaku OLED fontu."""
+        return get_font_char_width()
+
+    def get_max_visible_list_rows(self):
+        """Spocita pocet radku seznamu, ktere se vejdou pod nadpis."""
+        total_rows = max(1, self.display.height // self.get_line_height())
+        return max(1, total_rows - 1)
+
     def get_active_menu_emote(self):
         """Vrati emote otevreny v detailu nebo `None` mimo tuto obrazovku."""
         if self.active_screen == SCREEN_EMOTE_DETAIL:
@@ -303,7 +314,8 @@ class UI():
             })
 
         elif self.active_screen == SCREEN_DEBUG_MENU:
-            for index, line in enumerate(self.debug_lines[:MAX_VISIBLE_LIST_ROWS]):
+            max_visible_rows = self.get_max_visible_list_rows()
+            for index, line in enumerate(self.debug_lines[:max_visible_rows]):
                 visible_items.append({
                     "index": index,
                     "label": line,
@@ -328,34 +340,36 @@ class UI():
 
     def get_follow_scroll_offset(self, selected_index, current_offset, item_count):
         """Spocita scroll tak, aby vybrany radek zustal ve viditelne casti."""
+        max_visible_rows = self.get_max_visible_list_rows()
         # Kdyz se seznam vejde na obrazovku cely, scroll neni potreba.
-        if item_count <= MAX_VISIBLE_LIST_ROWS:
+        if item_count <= max_visible_rows:
             return 0
 
         if selected_index == 0:
             return 0
 
         if selected_index == item_count - 1:
-            return max(0, item_count - MAX_VISIBLE_LIST_ROWS)
+            return max(0, item_count - max_visible_rows)
 
         if selected_index < current_offset:
             return selected_index
 
-        if selected_index >= current_offset + MAX_VISIBLE_LIST_ROWS:
-            return selected_index - MAX_VISIBLE_LIST_ROWS + 1
+        if selected_index >= current_offset + max_visible_rows:
+            return selected_index - max_visible_rows + 1
 
         return current_offset
 
     def get_visible_items(self, items, selected_index, scroll_offset):
         """Vrati aktualne viditelnou cast seznamu a jeji scroll offset."""
-        if len(items) <= MAX_VISIBLE_LIST_ROWS:
+        max_visible_rows = self.get_max_visible_list_rows()
+        if len(items) <= max_visible_rows:
             return items, 0
 
         scroll_offset = min(
             scroll_offset,
-            max(0, len(items) - MAX_VISIBLE_LIST_ROWS),
+            max(0, len(items) - max_visible_rows),
         )
-        visible_items = items[scroll_offset:scroll_offset + MAX_VISIBLE_LIST_ROWS]
+        visible_items = items[scroll_offset:scroll_offset + max_visible_rows]
 
         if selected_index < scroll_offset or selected_index >= scroll_offset + len(visible_items):
             scroll_offset = self.get_follow_scroll_offset(
@@ -363,7 +377,7 @@ class UI():
                 scroll_offset,
                 len(items),
             )
-            visible_items = items[scroll_offset:scroll_offset + MAX_VISIBLE_LIST_ROWS]
+            visible_items = items[scroll_offset:scroll_offset + max_visible_rows]
 
         return visible_items, scroll_offset
 
@@ -426,6 +440,8 @@ class UI():
         """Prevede interní hodnotu nastaveni na text pro OLED a web."""
         if name == "Brightness":
             return "{:.1f}".format(float(value))
+        if name == "Font":
+            return str(value)
         if name == "Fan":
             return "{}%".format(int(value))
         return "ON" if bool(value) else "OFF"
@@ -446,7 +462,7 @@ class UI():
     def render_debug(self):
         """Vykresli debug informace na OLED."""
         lines = ["Debug"]
-        lines.extend(self.debug_lines[:MAX_VISIBLE_LIST_ROWS])
+        lines.extend(self.debug_lines[:self.get_max_visible_list_rows()])
         self.render_screen_text("\n".join(lines))
 
     def render_selectable_list(self, title, items, selected_index, scroll_offset=0):
@@ -472,22 +488,30 @@ class UI():
         lines = str(text).split("\n")
 
         # Prvni radek se zkracuje, aby se neprekryl s hodinami vpravo.
+        line_height = self.get_line_height()
         for index, line in enumerate(lines):
             if index == 0:
                 line = self.fit_first_line(line)
-            blocks.append({"text": line, "x": 0, "y": index * LINE_HEIGHT})
+            else:
+                line = self.fit_display_line(line)
+            blocks.append({"text": line, "x": 0, "y": index * line_height})
 
         blocks.append({"text": self.clock_text, "x": self.get_clock_x(), "y": CLOCK_Y})
         self.display.show_text_blocks(blocks, clear=True)
 
     def get_clock_x(self):
         """Vrati x souradnici pro zarovnani hodin doprava."""
-        return self.display.width - (len(self.clock_text) * CHAR_WIDTH)
+        return self.display.width - (len(self.clock_text) * self.get_char_width())
 
     def fit_first_line(self, text):
         """Zkrati prvni radek tak, aby nelezl do oblasti hodin."""
         max_width = self.get_clock_x() - CLOCK_PADDING
-        max_chars = max(0, max_width // CHAR_WIDTH)
+        max_chars = max(0, max_width // self.get_char_width())
+        return str(text)[:max_chars]
+
+    def fit_display_line(self, text):
+        """Zkrati radek tak, aby se pri velkem fontu nezalomil pres dalsi radek."""
+        max_chars = max(1, self.display.width // self.get_char_width())
         return str(text)[:max_chars]
 
     def go_back(self):

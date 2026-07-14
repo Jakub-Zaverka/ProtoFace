@@ -8,13 +8,10 @@ import adafruit_ssd1306
 OLED_WIDTH = 128
 OLED_HEIGHT = 64
 OLED_ADDRESS = 0x3C
-TEXT_SCALE_NUMERATOR = 3
-TEXT_SCALE_DENOMINATOR = 2
+OLED_FONT_SCALE_STEPS = ((3, 2), (2, 1), (5, 2))
+OLED_FONT_SCALE_INDEX = 0
 FONT_GLYPH_WIDTH = 5
 FONT_GLYPH_HEIGHT = 7
-FONT_RENDER_HEIGHT = 11
-FONT_CHAR_WIDTH = 9
-FONT_LINE_HEIGHT = 12
 
 _shared_i2c = None
 
@@ -67,6 +64,48 @@ _FONT_5X7 = {
     "<": [0x00, 0x08, 0x14, 0x22, 0x41],
     "=": [0x14, 0x14, 0x14, 0x14, 0x14]
 }
+
+
+def _get_text_scale():
+    """Vrati aktualni pomer zvetseni OLED fontu."""
+    return OLED_FONT_SCALE_STEPS[OLED_FONT_SCALE_INDEX]
+
+
+def _scale_extent(value):
+    """Prepocita rozmer bitmapoveho fontu podle aktualniho zvetseni."""
+    scale_num, scale_den = _get_text_scale()
+    return (value * scale_num + scale_den - 1) // scale_den
+
+
+def get_oled_font_scale_label():
+    """Vrati kratky popisek aktualni velikosti OLED fontu."""
+    scale_num, scale_den = _get_text_scale()
+    if scale_num % scale_den == 0:
+        return "{}x".format(scale_num // scale_den)
+    return "{}.{}x".format(scale_num // scale_den, (scale_num * 10 // scale_den) % 10)
+
+
+def cycle_oled_font_scale():
+    """Prepne OLED font na dalsi preddefinovanou velikost."""
+    global OLED_FONT_SCALE_INDEX
+
+    OLED_FONT_SCALE_INDEX = (OLED_FONT_SCALE_INDEX + 1) % len(OLED_FONT_SCALE_STEPS)
+    return get_oled_font_scale_label()
+
+
+def get_font_char_width():
+    """Vrati sirku jednoho znaku vcetne mezery pro aktualni font."""
+    return _scale_extent(FONT_GLYPH_WIDTH) + 1
+
+
+def get_font_line_height():
+    """Vrati vysku radku pro aktualni font."""
+    return _scale_extent(FONT_GLYPH_HEIGHT) + 1
+
+
+def get_font_render_height():
+    """Vrati skutecnou vykreslovanou vysku znaku pro aktualni font."""
+    return _scale_extent(FONT_GLYPH_HEIGHT)
 
 
 def get_i2c():
@@ -271,22 +310,25 @@ class OLEDDisplay:
         """Kresli vice radku textu lokalnim 5x7 bitmapovym fontem."""
         cursor_x = x
         cursor_y = y
+        char_width = get_font_char_width()
+        line_height = get_font_line_height()
+        render_height = get_font_render_height()
 
         # Text se automaticky zalamuje pri konci radku a zastavi se na spodku displeje.
         for char in str(text):
             if char == "\n":
                 cursor_x = x
-                cursor_y += FONT_LINE_HEIGHT
+                cursor_y += line_height
                 continue
 
             self._draw_char(char, cursor_x, cursor_y, color=color)
-            cursor_x += FONT_CHAR_WIDTH
+            cursor_x += char_width
 
-            if cursor_x + FONT_CHAR_WIDTH > self.width:
+            if cursor_x + char_width > self.width:
                 cursor_x = x
-                cursor_y += FONT_LINE_HEIGHT
+                cursor_y += line_height
 
-            if cursor_y + FONT_RENDER_HEIGHT > self.height:
+            if cursor_y + render_height > self.height:
                 break
 
     def _draw_char(self, char, x, y, color=1):
@@ -301,9 +343,8 @@ class OLEDDisplay:
                     self._draw_scaled_pixel(x, y, column, row, color)
 
     def _draw_scaled_pixel(self, x, y, column, row, color=1):
-        """Zvetsi jeden pixel bitmapoveho fontu na zhruba 150 %."""
-        scale_num = TEXT_SCALE_NUMERATOR
-        scale_den = TEXT_SCALE_DENOMINATOR
+        """Zvetsi jeden pixel bitmapoveho fontu podle aktualniho nastaveni."""
+        scale_num, scale_den = _get_text_scale()
         start_x = (column * scale_num) // scale_den
         end_x = ((column + 1) * scale_num + scale_den - 1) // scale_den
         start_y = (row * scale_num) // scale_den
