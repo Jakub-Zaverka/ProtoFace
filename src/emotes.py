@@ -356,7 +356,7 @@ class FaceEmoteController:
         self.eye_sleep_emote = create_image_emote("/faces/sleep.bmp", "sleep")
         self.eye_blink_emote = create_image_emote("/faces/eye_blink.bmp", "blink")
         self.eye_boop_emote = create_image_emote("/faces/eye_open.bmp", "boop")
-        self.nose_idle_source = "/faces/nose.bmp"
+        self.nose_idle_emote = create_image_emote("/faces/nose.bmp", "nose")
         self.mouth_idle_emote = create_image_emote("/faces/mouth.bmp", "mouth")
         self.mouth_speak_emote = create_image_emote("/faces/mouth_speak.bmp", "speak")
         self.eye_load_emote = create_gif_emote("/faces/giphy.gif", "load", loop=False)
@@ -406,7 +406,7 @@ class FaceEmoteController:
             )
             self.display.load_bmp_into_matrix(
                 regions["nose"]["matrix"],
-                self.nose_idle_source,
+                _get_source_content(self.nose_idle_emote),
             )
             self.display.load_bmp_into_matrix(
                 regions["mouth"]["matrix"],
@@ -431,7 +431,7 @@ class FaceEmoteController:
             "nose": create_region(
                 "nose_{}".format(suffix),
                 nose_matrix,
-                self.nose_idle_source,
+                self.nose_idle_emote,
             ),
             "mouth": create_region(
                 "mouth_{}".format(suffix),
@@ -550,9 +550,13 @@ class FaceEmoteController:
             cross_emote["color_override"] = 0xFF0000
             blep_emote = self.mouth_blep_emote.copy()
             blep_emote["color_override"] = 0xFF0000
+            nose_idle_emote = self.nose_idle_emote.copy()
+            nose_idle_emote["color_override"] = 0xFF0000
             requests["eye"]["source"] = cross_emote
             requests["eye"]["duration"] = 1
             requests["mouth"]["source"] = blep_emote
+            requests["mouth"]["duration"] = 1
+            requests["nose"]["source"] = nose_idle_emote
             requests["mouth"]["duration"] = 1
             return True
 
