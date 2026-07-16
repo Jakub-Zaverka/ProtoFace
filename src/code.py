@@ -215,7 +215,7 @@ RUNTIME_SETTINGS = load_runtime_settings()
 # Vychozi konfigurace runtime vznikne spojenim persistentnich voleb a `settings.toml`.
 ACCELEROMETER_ON = read_bool_setting("ACCELEROMETER_ON", True)
 MIC_ON = read_bool_setting("MIC_ON", True)
-MIC_READ_ON = False
+MIC_READ_ON = True
 APDS_ON = read_bool_setting("APDS_ON", True)
 SSD1306_ON = read_bool_setting("SSD1306_ON", True)
 WIFI_ON = read_bool_setting("WIFI_ON", True)

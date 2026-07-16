@@ -29,7 +29,7 @@ Aktualni projekt odpovida konfiguraci:
 - OLED: `SSD1306 128x64` na `0x3C`
 - proximity senzor: `APDS9960`
 - akcelerometr: `LIS3DH` na `0x19`
-- mikrofon: analogovy vstup `A3`
+- mikrofon: `MAX9814` pres `ADS1115` na I2C, vstup `A0`
 - ventilator: PWM vystup `A1`
 - tlacitka:
   - `BUTTON_UP`
@@ -44,6 +44,8 @@ Projekt pouziva hlavne:
 - `adafruit_apds9960`
 - `adafruit_lis3dh`
 - `adafruit_ntp`
+- `adafruit_ads1x15`
+- `adafruit_bus_device`
 - `adafruit_imageload`
 - `adafruit_httpserver`
 - `adafruit_framebuf`
@@ -125,8 +127,9 @@ Ze standardnich modulu CircuitPython se pouzivaji napr.:
   - kalibrace a cteni `LIS3DH`
 
 - `mic.py`
-  - kalibrace mikrofonu
-  - jednoducha detekce odchylky od klidove hladiny
+  - cte `MAX9814` pres `ADS1115` na sdilene I2C sbernici
+  - pouziva single-ended vstup `A0`
+  - kalibruje klidovou uroven a vraci relativni odchylku pro animaci ust
 
 - `I2C_sim.py`
   - sdilena I2C sbernice
@@ -335,6 +338,7 @@ Vychozi obrazky:
 Pokud neni aktivni menu emote:
 
 - mikrofon:
+  - `MAX9814 OUT` je pripojeny na `ADS1115 A0`
   - pri `mic_value > 5` se pouziji mluvici usta
 
 - proximity:
@@ -638,7 +642,9 @@ Krome `print()` se logy ukladaji i do vnitrniho list bufferu.
   - over, ze je `Accelerometer` zapnuty
 
 - usta nereaguji na zvuk
-  - over mikrofon na `A3`
+  - over `MAX9814 OUT -> ADS1115 A0`
+  - over, ze je na desce knihovna `adafruit_ads1x15`
+  - over, ze je `ADS1115` videt na I2C adrese `0x48`
   - pripadne uprav prah `mic_value > 5`
 
 - boop nereaguje
