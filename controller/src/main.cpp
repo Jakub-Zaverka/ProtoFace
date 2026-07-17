@@ -171,6 +171,20 @@ void setup()
 
         for (int i = 0; i < networkCount; i++)
         {
+            if (WiFi.SSID(i) == BACKUP_WIFI_SSID)
+            {
+                esp_wifi_set_channel(WiFi.channel(i), WIFI_SECOND_CHAN_NONE);
+                Serial.print("Connected to:");
+                Serial.println(WiFi.SSID(i));
+                Serial.print("On channel:");
+                Serial.println(WiFi.channel(i));
+                esp_channel_set = true;
+                break;
+            }
+        }
+
+        for (int i = 0; i < networkCount; i++)
+        {
             if (false)
             {
                 Serial.print(i + 1);

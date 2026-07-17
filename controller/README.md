@@ -61,8 +61,8 @@ se starsim firmwarem bez `button4`.
 
 ESP-NOW musi bezet na stejnem Wi-Fi kanalu jako prijimaci MatrixPortal S3.
 Controller se k routeru neprihlasuje natrvalo; pri startu provede scan siti,
-najde `HOME_WIFI_SSID` nebo `BACKUP_WIFI_SSID` a nastavi radio na kanal nalezene
-site pres `esp_wifi_set_channel(...)`.
+nejdrive zkusi `BACKUP_WIFI_SSID`, potom `HOME_WIFI_SSID` a nastavi radio na
+kanal nalezene site pres `esp_wifi_set_channel(...)`.
 
 Pokud controller zadnou znamou sit nenajde, vypise `No Known WIFI available`.
 ESP-NOW peer se presto inicializuje, ale komunikace bude fungovat jen pokud je
