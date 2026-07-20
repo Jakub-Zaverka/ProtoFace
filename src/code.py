@@ -11,8 +11,11 @@ from accelerometer import Accelerometer
 from mic import Microphone
 from I2C_sim import APDSSensor
 from I2C_sim import cycle_oled_font_scale
+from I2C_sim import get_oled_font_scale_count
+from I2C_sim import get_oled_font_scale_index
 from I2C_sim import get_oled_font_scale_label
 from I2C_sim import OLEDDisplay
+from I2C_sim import set_oled_font_scale_index
 import board
 import digitalio
 from wifi_network import Wifi
@@ -28,9 +31,11 @@ import struct
 import pwmio
 
 # Identifikator a mapa bitu pro ulozeni runtime voleb do `microcontroller.nvm`.
-NVM_MAGIC = b"PFS3"
-# OLD_NVM_MAGIC = b"PFS1"
+NVM_MAGIC = b"PFS4"
+OLD_NVM_MAGIC = b"PFS3"
+LEGACY_NVM_MAGIC = b"PFS1"
 NVM_FLAG_BYTES = 2
+NVM_VALUE_BYTES = 3
 LOG_BUFFER_SIZE = 100
 DEBUG_UI_UPDATE_INTERVAL = 1.0
 BOOP_AUTO_TUNE_WINDOW = 1.0
@@ -59,6 +64,11 @@ SETTING_BITS = {
     "BOOP_RAINBOW_ON": 7,
     "RAINBOW_OVERRIDE_ON": 8
 }
+VALUE_SETTING_KEYS = (
+    "BRIGHTNESS_INDEX",
+    "OLED_FONT_SCALE_INDEX",
+    "FAN_SPEED_INDEX",
+)
 
 MIN_MOVEMENT = 1
 
@@ -173,17 +183,26 @@ class ListHandler(logging.Handler):
 
 
 def load_runtime_settings():
-    """Nacte ulozene runtime prepinace z `microcontroller.nvm`."""
-    # Prvni byty NVM obsahuji hlavicku a bajty s bitovym polem prepinacu.
+    """Nacte ulozene runtime volby z `microcontroller.nvm`."""
+    # Prvni byty NVM obsahuji hlavicku, bitove pole prepinacu a hodnotove indexy.
     if len(microcontroller.nvm) < len(NVM_MAGIC) + 1:
         return {}
 
-    raw = bytes(microcontroller.nvm[: len(NVM_MAGIC) + NVM_FLAG_BYTES])
+    raw_length = len(NVM_MAGIC) + NVM_FLAG_BYTES + NVM_VALUE_BYTES
+    raw = bytes(microcontroller.nvm[:raw_length])
     magic = raw[: len(NVM_MAGIC)]
     if magic == NVM_MAGIC:
         flag_bytes = raw[len(NVM_MAGIC): len(NVM_MAGIC) + NVM_FLAG_BYTES]
+        value_bytes = raw[
+            len(NVM_MAGIC) + NVM_FLAG_BYTES:
+            len(NVM_MAGIC) + NVM_FLAG_BYTES + NVM_VALUE_BYTES
+        ]
     elif magic == OLD_NVM_MAGIC:
-        flag_bytes = raw[len(OLD_NVM_MAGIC): len(OLD_NVM_MAGIC) + 1]
+        flag_bytes = raw[len(OLD_NVM_MAGIC): len(OLD_NVM_MAGIC) + NVM_FLAG_BYTES]
+        value_bytes = b""
+    elif magic == LEGACY_NVM_MAGIC:
+        flag_bytes = raw[len(LEGACY_NVM_MAGIC): len(LEGACY_NVM_MAGIC) + 1]
+        value_bytes = b""
     else:
         return {}
 
@@ -194,6 +213,10 @@ def load_runtime_settings():
             continue
         flags = flag_bytes[byte_index]
         runtime_settings[setting_key] = bool(flags & (1 << (bit_index % 8)))
+
+    for offset, setting_key in enumerate(VALUE_SETTING_KEYS):
+        if offset < len(value_bytes):
+            runtime_settings[setting_key] = int(value_bytes[offset])
     return runtime_settings
 
 
@@ -218,6 +241,18 @@ def read_bool_setting(name, default):
         return value
 
     return str(value).strip().lower() == "true"
+
+
+def read_index_setting(name, default, max_exclusive):
+    """Precte ulozeny index a vrati fallback pri hodnote mimo rozsah."""
+    try:
+        value = int(RUNTIME_SETTINGS.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+    if value < 0 or value >= max_exclusive:
+        return default
+    return value
 
 
 RUNTIME_SETTINGS = load_runtime_settings()
@@ -245,6 +280,26 @@ RUNTIME_SETTINGS.update({
     "BOOP_RAINBOW_ON": BOOP_RAINBOW_ON,
     "RAINBOW_OVERRIDE_ON": RAINBOW_OVERRIDE_ON,
 })
+display_module.set_brightness_scale_index(
+    read_index_setting(
+        "BRIGHTNESS_INDEX",
+        display_module.get_brightness_scale_index(),
+        len(display_module.BRIGHTNESS_STEPS),
+    )
+)
+set_oled_font_scale_index(
+    read_index_setting(
+        "OLED_FONT_SCALE_INDEX",
+        get_oled_font_scale_index(),
+        get_oled_font_scale_count(),
+    )
+)
+RUNTIME_SETTINGS.update({
+    "BRIGHTNESS_INDEX": display_module.get_brightness_scale_index(),
+    "OLED_FONT_SCALE_INDEX": get_oled_font_scale_index(),
+    "FAN_SPEED_INDEX": read_index_setting("FAN_SPEED_INDEX", 0, len(FAN_SPEED_STEPS)),
+})
+FAN_SPEED_PERCENT = FAN_SPEED_STEPS[RUNTIME_SETTINGS["FAN_SPEED_INDEX"]]
 
 logger = logging.getLogger("runtime")
 logger.setLevel(logging.INFO)
@@ -277,32 +332,46 @@ def get_performance_snapshot():
     return perf.last_snapshot
 
 
-def persist_boolean_setting(key, value):
-    """Ulozi jeden runtime prepinac do `microcontroller.nvm`."""
-    # Vsechny runtime volby se ukladaji jako bity v nekolika bajtech.
-    if len(microcontroller.nvm) < len(NVM_MAGIC) + NVM_FLAG_BYTES:
+def persist_runtime_settings_to_nvm():
+    """Zapise vsechny runtime volby do `microcontroller.nvm`."""
+    required_length = len(NVM_MAGIC) + NVM_FLAG_BYTES + NVM_VALUE_BYTES
+    if len(microcontroller.nvm) < required_length:
         if VERBOSE:
             print("microcontroller.nvm is too small for runtime settings")
         return False
 
-    RUNTIME_SETTINGS[key] = value
     flag_bytes = [0] * NVM_FLAG_BYTES
     for setting_key, bit_index in SETTING_BITS.items():
         if RUNTIME_SETTINGS.get(setting_key, False):
             byte_index = bit_index // 8
             bit_offset = bit_index % 8
             flag_bytes[byte_index] |= 1 << bit_offset
+    value_bytes = bytes([
+        int(RUNTIME_SETTINGS.get("BRIGHTNESS_INDEX", 0)) & 0xFF,
+        int(RUNTIME_SETTINGS.get("OLED_FONT_SCALE_INDEX", 0)) & 0xFF,
+        int(RUNTIME_SETTINGS.get("FAN_SPEED_INDEX", 0)) & 0xFF,
+    ])
 
     try:
-        microcontroller.nvm[: len(NVM_MAGIC) + NVM_FLAG_BYTES] = (
-            NVM_MAGIC + bytes(flag_bytes)
-        )
+        microcontroller.nvm[:required_length] = NVM_MAGIC + bytes(flag_bytes) + value_bytes
     except (OSError, ValueError) as error:
         if VERBOSE:
             print(f"Failed to write runtime settings to NVM: {error}")
         return False
 
     return True
+
+
+def persist_boolean_setting(key, value):
+    """Ulozi jeden runtime prepinac do `microcontroller.nvm`."""
+    RUNTIME_SETTINGS[key] = value
+    return persist_runtime_settings_to_nvm()
+
+
+def persist_value_setting(key, value):
+    """Ulozi jednu runtime hodnotu do `microcontroller.nvm`."""
+    RUNTIME_SETTINGS[key] = int(value)
+    return persist_runtime_settings_to_nvm()
 
 
 def persist_runtime_setting(setting_name, value):
@@ -332,7 +401,9 @@ def cycle_fan_speed():
     except ValueError:
         current_index = 0
 
-    set_fan_speed(FAN_SPEED_STEPS[(current_index + 1) % len(FAN_SPEED_STEPS)])
+    current_index = (current_index + 1) % len(FAN_SPEED_STEPS)
+    set_fan_speed(FAN_SPEED_STEPS[current_index])
+    persist_value_setting("FAN_SPEED_INDEX", current_index)
     return FAN_SPEED_PERCENT
 
 
@@ -555,6 +626,7 @@ def toggle_setting(setting_name):
 
     if setting_name == "Brightness":
         display_module.cycle_brightness_scale()
+        persist_value_setting("BRIGHTNESS_INDEX", display_module.get_brightness_scale_index())
         if DISPLAY_ON:
             shutdown_display_stack()
             initialize_display_stack()
@@ -562,6 +634,7 @@ def toggle_setting(setting_name):
 
     if setting_name == "Font":
         cycle_oled_font_scale()
+        persist_value_setting("OLED_FONT_SCALE_INDEX", get_oled_font_scale_index())
         return setting_name
 
     if setting_name == "Fan":

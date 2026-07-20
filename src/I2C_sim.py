@@ -85,12 +85,31 @@ def get_oled_font_scale_label():
     return "{}.{}x".format(scale_num // scale_den, (scale_num * 10 // scale_den) % 10)
 
 
-def cycle_oled_font_scale():
-    """Prepne OLED font na dalsi preddefinovanou velikost."""
+def get_oled_font_scale_index():
+    """Vrati index aktualniho kroku velikosti OLED fontu."""
+    return OLED_FONT_SCALE_INDEX
+
+
+def get_oled_font_scale_count():
+    """Vrati pocet dostupnych kroku velikosti OLED fontu."""
+    return len(OLED_FONT_SCALE_STEPS)
+
+
+def set_oled_font_scale_index(index):
+    """Nastavi velikost OLED fontu podle indexu preddefinovaneho kroku."""
     global OLED_FONT_SCALE_INDEX
 
-    OLED_FONT_SCALE_INDEX = (OLED_FONT_SCALE_INDEX + 1) % len(OLED_FONT_SCALE_STEPS)
+    if index < 0 or index >= len(OLED_FONT_SCALE_STEPS):
+        index = 0
+    OLED_FONT_SCALE_INDEX = index
     return get_oled_font_scale_label()
+
+
+def cycle_oled_font_scale():
+    """Prepne OLED font na dalsi preddefinovanou velikost."""
+    return set_oled_font_scale_index(
+        (OLED_FONT_SCALE_INDEX + 1) % len(OLED_FONT_SCALE_STEPS)
+    )
 
 
 def get_font_char_width():

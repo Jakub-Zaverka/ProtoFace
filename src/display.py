@@ -49,17 +49,29 @@ def get_brightness_scale():
     return BRIGHTNESS_SCALE
 
 
-def cycle_brightness_scale():
-    """Posune globalni jas na dalsi preddefinovany krok."""
+def get_brightness_scale_index():
+    """Vrati index aktualniho kroku jasu RGB matice."""
+    try:
+        return BRIGHTNESS_STEPS.index(round(BRIGHTNESS_SCALE, 1))
+    except ValueError:
+        return 0
+
+
+def set_brightness_scale_index(index):
+    """Nastavi jas RGB matice podle indexu preddefinovaneho kroku."""
     global BRIGHTNESS_SCALE
 
-    try:
-        current_index = BRIGHTNESS_STEPS.index(round(BRIGHTNESS_SCALE, 1))
-    except ValueError:
-        current_index = 0
-
-    BRIGHTNESS_SCALE = BRIGHTNESS_STEPS[(current_index + 1) % len(BRIGHTNESS_STEPS)]
+    if index < 0 or index >= len(BRIGHTNESS_STEPS):
+        index = 0
+    BRIGHTNESS_SCALE = BRIGHTNESS_STEPS[index]
     return BRIGHTNESS_SCALE
+
+
+def cycle_brightness_scale():
+    """Posune globalni jas na dalsi preddefinovany krok."""
+    return set_brightness_scale_index(
+        (get_brightness_scale_index() + 1) % len(BRIGHTNESS_STEPS)
+    )
 
 
 class Display:

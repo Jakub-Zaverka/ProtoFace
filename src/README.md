@@ -427,10 +427,11 @@ je podporuje a pri chybejici hodnote pouzije vychozi `true`.
 
 ### Runtime perzistence
 
-Toggle hodnoty z UI se ukladaji do `microcontroller.nvm`.
+Hodnoty z UI se ukladaji do `microcontroller.nvm`.
 
-- pouziva se magic hlavicka `PFS3`
+- pouziva se magic hlavicka `PFS4`
 - stavy jsou ulozene jako bitove pole
+- `Brightness`, `Font` a `Fan` jsou ulozene jako indexy preddefinovanych kroku
 - runtime nastaveni ma prioritu nad `settings.toml`
 
 Pres UI lze za behu menit:
@@ -672,8 +673,8 @@ README odpovida aktualnimu kodu v repozitari, vcetne:
 - lokalnich tlacitek `BUTTON_UP`, `BUTTON_DOWN`, `A4`
 - ctyrtlacitkoveho ESP-NOW controlleru s `button4` jako `back`
 - menu nastaveni `Brightness` a `Fan`
-- NVM hlavicky `PFS3`
-- `BLINK_ON`, `DISPLAY_ON`, `BOOP_RAINBOW_ON` a `RAINBOW_OVERRIDE_ON` runtime nastaveni
+- NVM hlavicky `PFS4`
+- runtime nastaveni `BLINK_ON`, `DISPLAY_ON`, `BOOP_RAINBOW_ON`, `RAINBOW_OVERRIDE_ON`, `Brightness`, `Font` a `Fan`
 - performance mereni v `performance.py`
 - cache BMP assetu a rychle RGB565 cesty v `display.py`
 - zpomaleneho blink intervalu pres `BLINK_TIME_SET = 100`
