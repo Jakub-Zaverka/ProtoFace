@@ -135,6 +135,16 @@ class BoopThresholdTracker:
         self.samples.append((now, value))
         return self.threshold
 
+    def calibrate(self, value=None):
+        """Resetuje automaticky threshold podle aktualni proximity hodnoty."""
+        self.samples = []
+        self.freeze_until = 0.0
+        if value is None:
+            self.threshold = self.fallback_threshold
+        else:
+            self.threshold = min(BOOP_MAX_THRESHOLD, int(value) + self.spike_margin)
+        return self.threshold
+
     def _trim(self, now):
         oldest_allowed = now - self.window_seconds
         while self.samples and self.samples[0][0] < oldest_allowed:
@@ -481,6 +491,8 @@ def toggle_setting(setting_name):
     """Prepne jednu runtime volbu a pri potrebe doinicializuje hardware."""
     global ACCELEROMETER_ON
     global APDS_ON
+    global boop_threshold
+    global boop_threshold_tracker
     global WIFI_ON
     global accelerometer
     global apds
@@ -510,6 +522,16 @@ def toggle_setting(setting_name):
         if APDS_ON and apds is None:
             apds = APDSSensor()
         persist_runtime_setting(setting_name, APDS_ON)
+        return setting_name
+
+    if setting_name == "Boop Calibrate":
+        current_value = None
+        if APDS_ON:
+            if apds is None:
+                apds = APDSSensor()
+            if apds is not None:
+                current_value = apds.get_value()
+        boop_threshold = boop_threshold_tracker.calibrate(current_value)
         return setting_name
 
     if setting_name == "Boop Rainbow":
@@ -616,6 +638,7 @@ def get_setting_values():
     return {
         "Display": DISPLAY_ON,
         "Boop": APDS_ON,
+        "Boop Calibrate": True,
         "Boop Rainbow": BOOP_RAINBOW_ON,
         "Rainbow Override": RAINBOW_OVERRIDE_ON,
         "Blink": BLINK_ON,

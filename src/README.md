@@ -282,6 +282,7 @@ Menu nastaveni:
 - `Brightness`
 - `Fan`
 - `Boop`
+- `Boop Calibrate`
 - `Boop Rainbow`
 - `Rainbow Override`
 - `Mic`
@@ -438,6 +439,7 @@ Pres UI lze za behu menit:
 - `Brightness`
 - `Fan`
 - `Boop`
+- `Boop Calibrate`
 - `Boop Rainbow`
 - `Rainbow Override`
 - `Mic`
