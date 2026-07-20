@@ -39,8 +39,8 @@ NVM_VALUE_BYTES = 3
 LOG_BUFFER_SIZE = 100
 DEBUG_UI_UPDATE_INTERVAL = 1.0
 WIFI_RETRY_SETTINGS = {
-    "Wifi Main": "main",
-    "Wifi Backup": "backup",
+    # "Wifi Main": "main",
+    # "Wifi Backup": "backup",
 }
 BOOP_AUTO_TUNE_WINDOW = 1.0
 BOOP_SPIKE_MARGIN = 20
@@ -794,8 +794,8 @@ def get_setting_values():
         "Font": get_oled_font_scale_label(),
         "Fan": FAN_SPEED_PERCENT,
         "Wifi": is_wifi_connected(),
-        "Wifi Main": True,
-        "Wifi Backup": True,
+        # "Wifi Main": True,
+        # "Wifi Backup": True,
         "Accelerometer": ACCELEROMETER_ON,
         "Verbose": VERBOSE,
         "Mic": MIC_ON

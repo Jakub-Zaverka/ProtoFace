@@ -32,7 +32,24 @@ class UI():
         # Tyto seznamy urcuji, co se v menu skutecne zobrazi a v jakem poradi.
         self.main_menu_items = ["Emotes", "Settings", "Debug"]
         self.emotes_menu_items = ["Hearth", "Narrow", "Question", "Cross", "Open eye", "Sleep", "Blep", "Dead", "Clock", "Back"]
-        self.settings_menu_items = ["Display", "Brightness", "Font", "Fan", "Boop", "Boop Calibrate", "Boop Rainbow", "Rainbow Override", "Mic", "Blink", "Accelerometer", "Wifi", "Wifi Main", "Wifi Backup", "Verbose", "Back"]
+        self.settings_menu_items = [
+            "Display",
+            "Brightness",
+            "Font",
+            "Fan",
+            "Boop",
+            "Boop Calibrate",
+            "Boop Rainbow",
+            "Rainbow Override",
+            "Mic",
+            "Blink",
+            "Accelerometer",
+            "Wifi",
+            # "Wifi Main",
+            # "Wifi Backup",
+            "Verbose",
+            "Back",
+        ]
         self.debug_lines = []
         self.setting_values = {
             "Display": False,
@@ -41,8 +58,8 @@ class UI():
             "Boop Rainbow": True,
             "Rainbow Override": False,
             "Wifi": False,
-            "Wifi Main": True,
-            "Wifi Backup": True,
+            # "Wifi Main": True,
+            # "Wifi Backup": True,
             "Accelerometer": False,
             "Verbose": False,
             "Mic": False,
@@ -470,7 +487,11 @@ class UI():
             return str(value)
         if name == "Fan":
             return "{}%".format(int(value))
-        if name in ("Boop Calibrate", "Wifi Main", "Wifi Backup"):
+        if name in (
+            "Boop Calibrate",
+            # "Wifi Main",
+            # "Wifi Backup",
+        ):
             return "RUN"
         return "ON" if bool(value) else "OFF"
 
