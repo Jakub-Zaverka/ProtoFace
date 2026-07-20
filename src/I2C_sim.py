@@ -307,7 +307,19 @@ class OLEDDisplay:
                 text = block.get("text", "")
                 x = block.get("x", 0)
                 y = block.get("y", 0)
-                self._draw_text(str(text), x, y)
+                wrap = block.get("wrap", True)
+                max_width = block.get("max_width", None)
+                clip_x_min = block.get("clip_x_min", None)
+                clip_x_max = block.get("clip_x_max", None)
+                self._draw_text(
+                    str(text),
+                    x,
+                    y,
+                    wrap=wrap,
+                    max_width=max_width,
+                    clip_x_min=clip_x_min,
+                    clip_x_max=clip_x_max,
+                )
 
             self.display.show()
             return True
@@ -325,13 +337,31 @@ class OLEDDisplay:
         )
         return self.show_text(text)
 
-    def _draw_text(self, text, x=0, y=0, color=1):
+    def _draw_text(
+        self,
+        text,
+        x=0,
+        y=0,
+        color=1,
+        wrap=True,
+        max_width=None,
+        clip_x_min=None,
+        clip_x_max=None,
+    ):
         """Kresli vice radku textu lokalnim 5x7 bitmapovym fontem."""
         cursor_x = x
         cursor_y = y
         char_width = get_font_char_width()
         line_height = get_font_line_height()
         render_height = get_font_render_height()
+        if max_width is None:
+            max_width = self.width - x
+        if clip_x_min is None:
+            clip_x_min = x
+        if clip_x_max is None:
+            clip_x_max = x + max_width
+        clip_x_min = max(0, clip_x_min)
+        clip_x_max = min(self.width, clip_x_max)
 
         # Text se automaticky zalamuje pri konci radku a zastavi se na spodku displeje.
         for char in str(text):
@@ -340,18 +370,30 @@ class OLEDDisplay:
                 cursor_y += line_height
                 continue
 
-            self._draw_char(char, cursor_x, cursor_y, color=color)
+            self._draw_char(
+                char,
+                cursor_x,
+                cursor_y,
+                color=color,
+                clip_x_min=clip_x_min,
+                clip_x_max=clip_x_max,
+            )
             cursor_x += char_width
 
-            if cursor_x + char_width > self.width:
+            if wrap and cursor_x + char_width > x + max_width:
                 cursor_x = x
                 cursor_y += line_height
+            elif not wrap and cursor_x >= x + max_width:
+                continue
 
             if cursor_y + render_height > self.height:
                 break
 
-    def _draw_char(self, char, x, y, color=1):
+    def _draw_char(self, char, x, y, color=1, clip_x_min=0, clip_x_max=None):
         """Kresli jeden znak z lokalni tabulky bitmapoveho fontu."""
+        if clip_x_max is None:
+            clip_x_max = self.width
+
         glyph = _FONT_5X7.get(char)
         if glyph is None:
             glyph = _FONT_5X7.get(char.upper(), _FONT_5X7["?"])
@@ -359,10 +401,30 @@ class OLEDDisplay:
         for column, bits in enumerate(glyph):
             for row in range(7):
                 if bits & (1 << row):
-                    self._draw_scaled_pixel(x, y, column, row, color)
+                    self._draw_scaled_pixel(
+                        x,
+                        y,
+                        column,
+                        row,
+                        color,
+                        clip_x_min=clip_x_min,
+                        clip_x_max=clip_x_max,
+                    )
 
-    def _draw_scaled_pixel(self, x, y, column, row, color=1):
+    def _draw_scaled_pixel(
+        self,
+        x,
+        y,
+        column,
+        row,
+        color=1,
+        clip_x_min=0,
+        clip_x_max=None,
+    ):
         """Zvetsi jeden pixel bitmapoveho fontu podle aktualniho nastaveni."""
+        if clip_x_max is None:
+            clip_x_max = self.width
+
         scale_num, scale_den = _get_text_scale()
         start_x = (column * scale_num) // scale_den
         end_x = ((column + 1) * scale_num + scale_den - 1) // scale_den
@@ -370,7 +432,7 @@ class OLEDDisplay:
         end_y = ((row + 1) * scale_num + scale_den - 1) // scale_den
 
         for pixel_x in range(x + start_x, x + end_x):
-            if pixel_x < 0 or pixel_x >= self.width:
+            if pixel_x < clip_x_min or pixel_x >= clip_x_max:
                 continue
             for pixel_y in range(y + start_y, y + end_y):
                 if 0 <= pixel_y < self.height:

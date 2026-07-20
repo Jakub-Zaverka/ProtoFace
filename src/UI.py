@@ -1,6 +1,8 @@
 """Program ridi OLED menu, debug obrazovku a ovladani emote i nastaveni."""
 
 # UI pracuje s OLED textovym vystupem a volitelnym HTTP ovladanim.
+import time
+
 from I2C_sim import get_font_char_width, get_font_line_height, OLEDDisplay
 from server import ServerClass
 
@@ -13,6 +15,8 @@ SCREEN_SETTINGS_MENU = "settings_menu"
 SCREEN_DEBUG_MENU = "debug_menu"
 CLOCK_Y = 0
 CLOCK_PADDING = 2
+TEXT_SCROLL_INTERVAL = 0.16
+TEXT_SCROLL_HOLD_TICKS = 5
 
 EVENT_SETTING_SELECTED = "setting_selected"
 
@@ -53,6 +57,10 @@ class UI():
         self.selected_emote = None
         self.clock_text = "--:--"
         self.needs_render = True
+        self.text_scroll_tick = 0
+        self.text_scroll_last_update = 0.0
+        self.text_scroll_active = False
+        self.text_scroll_key = None
 
     def _consume_api_call(self, server: ServerClass, expected_value):
         """Spotrebuje jednu cekajici HTTP akci, pokud odpovida ocekavani."""
@@ -385,7 +393,7 @@ class UI():
     def render_ui(self):
         """Prekresli aktualni OLED obrazovku jen kdyz je to potreba."""
         # OLED se neprekresluje zbytecne v kazde iteraci, jen pri zmene stavu.
-        if not self.needs_render:
+        if not self.needs_render and not self.should_animate_text_scroll():
             return
 
         if self.active_screen == SCREEN_MAIN_MENU:
@@ -402,6 +410,19 @@ class UI():
             self.render_debug()
 
         self.needs_render = False
+
+    def should_animate_text_scroll(self):
+        """Vrati `True`, kdyz je cas posunout dlouhe radky textu."""
+        if not self.text_scroll_active:
+            return False
+
+        now = time.monotonic()
+        if now - self.text_scroll_last_update < TEXT_SCROLL_INTERVAL:
+            return False
+
+        self.text_scroll_last_update = now
+        self.text_scroll_tick += 1
+        return True
 
     def render_menu(self):
         """Vykresli hlavni menu."""
@@ -489,18 +510,62 @@ class UI():
         """Vykresli textovou OLED obrazovku s hodinami vpravo nahore."""
         blocks = []
         lines = str(text).split("\n")
+        has_scroll = False
+        scroll_key = (
+            self.active_screen,
+            tuple(lines),
+            self.get_char_width(),
+            self.get_line_height(),
+            self.clock_text,
+        )
+        if scroll_key != self.text_scroll_key:
+            self.text_scroll_key = scroll_key
+            self.text_scroll_tick = 0
+            self.text_scroll_last_update = time.monotonic()
 
-        # Prvni radek se zkracuje, aby se neprekryl s hodinami vpravo.
+        # Prvni radek ma uzsi oblast, aby se neprekryl s hodinami vpravo.
         line_height = self.get_line_height()
         for index, line in enumerate(lines):
             if index == 0:
-                line = self.fit_first_line(line)
+                max_width = self.get_clock_x() - CLOCK_PADDING
             else:
-                line = self.fit_display_line(line)
-            blocks.append({"text": line, "x": 0, "y": index * line_height})
+                max_width = self.display.width
 
-        blocks.append({"text": self.clock_text, "x": self.get_clock_x(), "y": CLOCK_Y})
+            text_width = len(str(line)) * self.get_char_width()
+            offset = self.get_text_scroll_offset(text_width, max_width)
+            has_scroll = has_scroll or text_width > max_width
+            blocks.append({
+                "text": line,
+                "x": -offset,
+                "y": index * line_height,
+                "wrap": False,
+                "max_width": text_width,
+                "clip_x_min": 0,
+                "clip_x_max": max_width,
+            })
+
+        blocks.append({
+            "text": self.clock_text,
+            "x": self.get_clock_x(),
+            "y": CLOCK_Y,
+            "wrap": False,
+        })
+        self.text_scroll_active = has_scroll
+        if not has_scroll:
+            self.text_scroll_tick = 0
         self.display.show_text_blocks(blocks, clear=True)
+
+    def get_text_scroll_offset(self, text_width, max_width):
+        """Spocita vodorovny ping-pong posun pro dlouhy radek."""
+        overflow = text_width - max_width
+        if overflow <= 0:
+            return 0
+
+        span = overflow + TEXT_SCROLL_HOLD_TICKS
+        phase = self.text_scroll_tick % (span * 2)
+        if phase >= span:
+            phase = (span * 2) - phase - 1
+        return min(overflow, phase)
 
     def get_clock_x(self):
         """Vrati x souradnici pro zarovnani hodin doprava."""
