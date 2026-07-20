@@ -38,6 +38,10 @@ NVM_FLAG_BYTES = 2
 NVM_VALUE_BYTES = 3
 LOG_BUFFER_SIZE = 100
 DEBUG_UI_UPDATE_INTERVAL = 1.0
+WIFI_RETRY_SETTINGS = {
+    "Wifi Main": "main",
+    "Wifi Backup": "backup",
+}
 BOOP_AUTO_TUNE_WINDOW = 1.0
 BOOP_SPIKE_MARGIN = 20
 BOOP_MAX_THRESHOLD = 255
@@ -323,6 +327,95 @@ def start_network_services():
         server.set_performance_provider(get_performance_snapshot)
     print("HTTP server available at {}".format(wifi.base_url(80)))
     print("HTTP server available at {}".format(wifi.ip_url(80)))
+
+
+def stop_network_services():
+    """Zastavi HTTP server, pokud bezi."""
+    global server
+
+    if server is not None:
+        try:
+            server.server.stop()
+        except Exception as error:
+            if VERBOSE:
+                print(f"Failed to stop HTTP server: {error}")
+        server = None
+
+
+def ensure_espnow():
+    """Inicializuje ESP-NOW jen jednou."""
+    global esp
+
+    if esp is None:
+        esp = espnow.ESPNow()
+        if wifi is not None:
+            mac = wifi.radio.mac_address
+            # print("uint8_t receiverMac[] = {%s};" % ", ".join(["0x%02X" % b for b in mac]))
+
+
+def is_wifi_connected():
+    """Vrati `True`, kdyz je Wi-Fi objekt realne pripojeny k AP."""
+    return wifi is not None and wifi.is_connected()
+
+
+def connect_wifi(profile="auto", persist=False):
+    """Zkusi pripojit Wi-Fi profil bez shozeni runtime pri chybe."""
+    global wifi
+    global device_clock
+    global WIFI_ON
+
+    stop_network_services()
+    if wifi is None:
+        wifi = Wifi()
+
+    try:
+        connected = wifi.connect(profile)
+    except Exception as error:
+        connected = False
+        if VERBOSE:
+            print(f"Failed to connect Wifi: {error}")
+        try:
+            wifi.set_fallback_channel()
+        except Exception:
+            pass
+    WIFI_ON = connected
+    if connected:
+        try:
+            if device_clock is None:
+                device_clock = Clock(wifi)
+            device_clock.sync_ntp()
+        except Exception as error:
+            if VERBOSE:
+                print(f"Failed to sync clock: {error}")
+
+        try:
+            start_network_services()
+        except Exception as error:
+            if VERBOSE:
+                print(f"Failed to start network services: {error}")
+            WIFI_ON = False
+    else:
+        device_clock = None
+
+    ensure_espnow()
+    if persist:
+        persist_runtime_setting("Wifi", WIFI_ON)
+    return WIFI_ON
+
+
+def disconnect_wifi(persist=False):
+    """Odpoji Wi-Fi a ponecha fallback kanal pro ESP-NOW."""
+    global WIFI_ON
+    global device_clock
+
+    stop_network_services()
+    if wifi is not None:
+        wifi.disconnect()
+    device_clock = None
+    WIFI_ON = False
+    ensure_espnow()
+    if persist:
+        persist_runtime_setting("Wifi", WIFI_ON)
 
 
 def get_performance_snapshot():
@@ -641,36 +734,18 @@ def toggle_setting(setting_name):
         cycle_fan_speed()
         return setting_name
 
+    if setting_name in WIFI_RETRY_SETTINGS:
+        connect_wifi(WIFI_RETRY_SETTINGS[setting_name], persist=False)
+        return setting_name
+
     if setting_name == "Wifi":
         # Vypnuti Wi-Fi zastavi HTTP server, zapnuti udela connect, sync hodin a start API.
         if WIFI_ON:
-            if server is not None:
-                server.server.stop()
-                server = None
-
-            WIFI_ON = False
-            persist_runtime_setting(setting_name, WIFI_ON)
+            disconnect_wifi(persist=True)
             return setting_name
 
-        try:
-            if wifi is None:
-                wifi = Wifi()
-            wifi.connect()
-
-            if device_clock is None:
-                device_clock = Clock(wifi)
-            device_clock.sync_ntp()
-
-            start_network_services()
-                
-            WIFI_ON = True
-            persist_runtime_setting(setting_name, WIFI_ON)
-            return setting_name
-        except Exception as error:
-            WIFI_ON = False
-            if VERBOSE:
-                print(f"Failed to enable Wifi: {error}")
-            return None
+        connect_wifi("auto", persist=True)
+        return setting_name
         
 
     
@@ -718,7 +793,9 @@ def get_setting_values():
         "Brightness": display_module.get_brightness_scale(),
         "Font": get_oled_font_scale_label(),
         "Fan": FAN_SPEED_PERCENT,
-        "Wifi": WIFI_ON,
+        "Wifi": is_wifi_connected(),
+        "Wifi Main": True,
+        "Wifi Backup": True,
         "Accelerometer": ACCELEROMETER_ON,
         "Verbose": VERBOSE,
         "Mic": MIC_ON
@@ -867,14 +944,7 @@ if ACCELEROMETER_ON:
     accelerometer = Accelerometer()
 
 if WIFI_ON:
-    wifi = Wifi()
-    wifi.connect()
-    device_clock = Clock(wifi)
-    device_clock.sync_ntp()
-    start_network_services()
-    esp = espnow.ESPNow()
-    mac =wifi.radio.mac_address
-    # print("uint8_t receiverMac[] = {%s};" % ", ".join(["0x%02X" % b for b in mac]))
+    connect_wifi("auto", persist=False)
 
 if MIC_ON:
     mic = Microphone()
@@ -1056,7 +1126,7 @@ while True:
     if face_emotes is not None:
         face_emotes.update(
             active_menu_emote=active_menu_emote,
-            device_clock=device_clock if WIFI_ON else None,
+            device_clock=device_clock if is_wifi_connected() else None,
             mic_value=mic_value,
             proximity_value=proximity_value,
             boop_threshold=boop_threshold,

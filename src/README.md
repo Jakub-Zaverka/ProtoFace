@@ -289,6 +289,8 @@ Menu nastaveni:
 - `Blink`
 - `Accelerometer`
 - `Wifi`
+- `Wifi Main`
+- `Wifi Backup`
 - `Verbose`
 - `Back`
 
@@ -447,6 +449,8 @@ Pres UI lze za behu menit:
 - `Blink`
 - `Accelerometer`
 - `Wifi`
+- `Wifi Main`
+- `Wifi Backup`
 - `Verbose`
 
 `SSD1306_ON` se cte jen pri startu, v UI se neprepina.
@@ -459,9 +463,11 @@ Pres UI lze za behu menit:
 
 - nacte hlavni a zalozni credentials
 - nastavi `wifi.radio.hostname`
+- umi zkusit hlavni sit, zalozni sit nebo obe v poradi
+- pri nenalezene siti nastavi fallback kanal `1` pro ESP-NOW a runtime pokracuje
 - zkusí hlavni sit, pri chybe zalozni
-- vytvori `mdns.Server`
-- vytvori `socketpool.SocketPool`
+- po uspesnem pripojeni vytvori `mdns.Server`
+- po uspesnem pripojeni vytvori `socketpool.SocketPool`
 
 Po uspesnem pripojeni se HTTP sluzba inzeruje pres mDNS.
 
