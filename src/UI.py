@@ -15,7 +15,9 @@ SCREEN_SETTINGS_MENU = "settings_menu"
 SCREEN_DEBUG_MENU = "debug_menu"
 CLOCK_Y = 0
 CLOCK_PADDING = 2
-TEXT_SCROLL_INTERVAL = 0.16
+TEXT_SCROLL_BASE_INTERVAL = 0.16
+TEXT_SCROLL_SPEED_MULTIPLIER = 3
+TEXT_SCROLL_INTERVAL = TEXT_SCROLL_BASE_INTERVAL
 TEXT_SCROLL_HOLD_TICKS = 5
 
 EVENT_SETTING_SELECTED = "setting_selected"
@@ -564,7 +566,7 @@ class UI():
             return 0
 
         span = overflow + TEXT_SCROLL_HOLD_TICKS
-        phase = self.text_scroll_tick % (span * 2)
+        phase = int(self.text_scroll_tick * TEXT_SCROLL_SPEED_MULTIPLIER) % (span * 2)
         if phase >= span:
             phase = (span * 2) - phase - 1
         return min(overflow, phase)
