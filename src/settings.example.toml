@@ -4,7 +4,7 @@ HOME_WIFI_PASSWORD = ""
 BACKUP_WIFI_SSID = ""
 BACKUP_WIFI_PASSWORD = ""
 
-AP_SSID=""
+AP_SSID="Alan Protogen"
 AP_PASSWORD=""
 DEVICE_HOSTNAME="protogen"
 
@@ -15,5 +15,7 @@ APDS_ON = true
 BOOP_RAINBOW_ON = true
 RAINBOW_OVERRIDE_ON = false
 SSD1306_ON = true
-WIFI_ON = true
+WIFI_CONNECT_ON = false
+WIFI_BROADCAST_ON = true
 VERBOSE = false
+    

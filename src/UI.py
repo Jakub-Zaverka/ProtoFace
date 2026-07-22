@@ -44,9 +44,8 @@ class UI():
             "Mic",
             "Blink",
             "Accelerometer",
-            "Wifi",
-            # "Wifi Main",
-            # "Wifi Backup",
+            "Wifi_Broadcast",
+            "Wifi_Connect",
             "Verbose",
             "Back",
         ]
@@ -57,9 +56,8 @@ class UI():
             "Boop Calibrate": True,
             "Boop Rainbow": True,
             "Rainbow Override": False,
-            "Wifi": False,
-            # "Wifi Main": True,
-            # "Wifi Backup": True,
+            "Wifi_Broadcast": False,
+            "Wifi_Connect": False,
             "Accelerometer": False,
             "Verbose": False,
             "Mic": False,
@@ -489,8 +487,6 @@ class UI():
             return "{}%".format(int(value))
         if name in (
             "Boop Calibrate",
-            # "Wifi Main",
-            # "Wifi Backup",
         ):
             return "RUN"
         return "ON" if bool(value) else "OFF"

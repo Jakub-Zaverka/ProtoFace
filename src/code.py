@@ -52,7 +52,8 @@ SETTING_ENV_KEYS = {
     "Boop Rainbow": "BOOP_RAINBOW_ON",
     "Rainbow Override": "RAINBOW_OVERRIDE_ON",
     "Blink": "BLINK_ON",
-    "Wifi": "WIFI_ON",
+    "Wifi_Connect": "WIFI_CONNECT_ON",
+    "Wifi_Broadcast": "WIFI_BROADCAST_ON",
     "Verbose": "VERBOSE",
     "Mic": "MIC_ON",
     "Display": "DISPLAY_ON"
@@ -66,7 +67,9 @@ SETTING_BITS = {
     "BLINK_ON": 5,
     "DISPLAY_ON": 6,
     "BOOP_RAINBOW_ON": 7,
-    "RAINBOW_OVERRIDE_ON": 8
+    "RAINBOW_OVERRIDE_ON": 8,
+    "WIFI_CONNECT_ON": 9,
+    "WIFI_BROADCAST_ON": 10,
 }
 VALUE_SETTING_KEYS = (
     "BRIGHTNESS_INDEX",
@@ -267,7 +270,9 @@ MIC_ON = read_bool_setting("MIC_ON", True)
 MIC_READ_ON = True
 APDS_ON = read_bool_setting("APDS_ON", True)
 SSD1306_ON = read_bool_setting("SSD1306_ON", True)
-WIFI_ON = read_bool_setting("WIFI_ON", True)
+WIFI_CONNECT_ON = read_bool_setting("WIFI_CONNECT_ON", False)
+WIFI_BROADCAST_ON = read_bool_setting("WIFI_BROADCAST_ON", True)
+WIFI_ON = WIFI_CONNECT_ON or WIFI_BROADCAST_ON
 VERBOSE = read_bool_setting("VERBOSE", False)
 BLINK_ON = read_bool_setting("BLINK_ON", True)
 DISPLAY_ON = read_bool_setting("DISPLAY_ON", True)
@@ -278,6 +283,8 @@ RUNTIME_SETTINGS.update({
     "MIC_ON": MIC_ON,
     "APDS_ON": APDS_ON,
     "WIFI_ON": WIFI_ON,
+    "WIFI_CONNECT_ON": WIFI_CONNECT_ON,
+    "WIFI_BROADCAST_ON": WIFI_BROADCAST_ON,
     "VERBOSE": VERBOSE,
     "BLINK_ON": BLINK_ON,
     "DISPLAY_ON": DISPLAY_ON,
@@ -323,6 +330,7 @@ def start_network_services():
     if ui is not None:
         server.set_menu_action_handler(handle_http_menu_action)
         server.set_menu_snapshot(refresh_ui_snapshot(ui))
+    server.set_time_handler(handle_http_time_sync)
     if perf is not None:
         server.set_performance_provider(get_performance_snapshot)
     print("HTTP server available at {}".format(wifi.base_url(80)))
@@ -358,18 +366,23 @@ def is_wifi_connected():
     return wifi is not None and wifi.is_connected()
 
 
-def connect_wifi(profile="auto", persist=False):
-    """Zkusi pripojit Wi-Fi profil bez shozeni runtime pri chybe."""
+def connect_wifi(profile="auto", persist=False, mode="broadcast"):
+    """Spusti vybrany Wi-Fi rezim bez shozeni runtime pri chybe."""
     global wifi
     global device_clock
     global WIFI_ON
+    global WIFI_CONNECT_ON
+    global WIFI_BROADCAST_ON
 
     stop_network_services()
     if wifi is None:
         wifi = Wifi()
 
     try:
-        connected = wifi.connect(profile)
+        if mode == "connect":
+            connected = wifi.Wifi_Connect(profile)
+        else:
+            connected = wifi.Wifi_Broadcast()
     except Exception as error:
         connected = False
         if VERBOSE:
@@ -378,15 +391,24 @@ def connect_wifi(profile="auto", persist=False):
             wifi.set_fallback_channel()
         except Exception:
             pass
-    WIFI_ON = connected
     if connected:
-        try:
-            if device_clock is None:
-                device_clock = Clock(wifi)
-            device_clock.sync_ntp()
-        except Exception as error:
-            if VERBOSE:
-                print(f"Failed to sync clock: {error}")
+        WIFI_CONNECT_ON = mode == "connect"
+        WIFI_BROADCAST_ON = mode != "connect"
+    else:
+        if mode == "connect":
+            WIFI_CONNECT_ON = False
+        else:
+            WIFI_BROADCAST_ON = False
+    WIFI_ON = WIFI_CONNECT_ON or WIFI_BROADCAST_ON
+    if connected:
+        if wifi.is_station_connected():
+            try:
+                if device_clock is None:
+                    device_clock = Clock(wifi)
+                device_clock.sync_ntp()
+            except Exception as error:
+                if VERBOSE:
+                    print(f"Failed to sync clock: {error}")
 
         try:
             start_network_services()
@@ -394,18 +416,23 @@ def connect_wifi(profile="auto", persist=False):
             if VERBOSE:
                 print(f"Failed to start network services: {error}")
             WIFI_ON = False
+            WIFI_CONNECT_ON = False
+            WIFI_BROADCAST_ON = False
     else:
         device_clock = None
 
     ensure_espnow()
     if persist:
-        persist_runtime_setting("Wifi", WIFI_ON)
+        persist_runtime_setting("Wifi_Connect", WIFI_CONNECT_ON)
+        persist_runtime_setting("Wifi_Broadcast", WIFI_BROADCAST_ON)
     return WIFI_ON
 
 
 def disconnect_wifi(persist=False):
     """Odpoji Wi-Fi a ponecha fallback kanal pro ESP-NOW."""
     global WIFI_ON
+    global WIFI_CONNECT_ON
+    global WIFI_BROADCAST_ON
     global device_clock
 
     stop_network_services()
@@ -413,9 +440,12 @@ def disconnect_wifi(persist=False):
         wifi.disconnect()
     device_clock = None
     WIFI_ON = False
+    WIFI_CONNECT_ON = False
+    WIFI_BROADCAST_ON = False
     ensure_espnow()
     if persist:
-        persist_runtime_setting("Wifi", WIFI_ON)
+        persist_runtime_setting("Wifi_Connect", WIFI_CONNECT_ON)
+        persist_runtime_setting("Wifi_Broadcast", WIFI_BROADCAST_ON)
 
 
 def get_performance_snapshot():
@@ -423,6 +453,15 @@ def get_performance_snapshot():
     if perf is None:
         return {}
     return perf.last_snapshot
+
+
+def handle_http_time_sync(year, month, day, hour, minute, second):
+    """Nastavi RTC podle lokalniho casu poslaneho z weboveho prohlizece."""
+    global device_clock
+
+    if device_clock is None:
+        device_clock = Clock(wifi)
+    return device_clock.set_datetime(year, month, day, hour, minute, second)
 
 
 def persist_runtime_settings_to_nvm():
@@ -658,6 +697,8 @@ def toggle_setting(setting_name):
     global boop_threshold
     global boop_threshold_tracker
     global WIFI_ON
+    global WIFI_CONNECT_ON
+    global WIFI_BROADCAST_ON
     global accelerometer
     global apds
     global wifi
@@ -738,13 +779,22 @@ def toggle_setting(setting_name):
         connect_wifi(WIFI_RETRY_SETTINGS[setting_name], persist=False)
         return setting_name
 
-    if setting_name == "Wifi":
-        # Vypnuti Wi-Fi zastavi HTTP server, zapnuti udela connect, sync hodin a start API.
-        if WIFI_ON:
+    if setting_name == "Wifi_Connect":
+        if WIFI_CONNECT_ON:
             disconnect_wifi(persist=True)
             return setting_name
 
-        connect_wifi("auto", persist=True)
+        WIFI_BROADCAST_ON = False
+        connect_wifi("auto", persist=True, mode="connect")
+        return setting_name
+
+    if setting_name == "Wifi_Broadcast":
+        if WIFI_BROADCAST_ON:
+            disconnect_wifi(persist=True)
+            return setting_name
+
+        WIFI_CONNECT_ON = False
+        connect_wifi("auto", persist=True, mode="broadcast")
         return setting_name
         
 
@@ -793,7 +843,8 @@ def get_setting_values():
         "Brightness": display_module.get_brightness_scale(),
         "Font": get_oled_font_scale_label(),
         "Fan": FAN_SPEED_PERCENT,
-        "Wifi": is_wifi_connected(),
+        "Wifi_Connect": WIFI_CONNECT_ON and is_wifi_connected(),
+        "Wifi_Broadcast": WIFI_BROADCAST_ON and is_wifi_connected(),
         # "Wifi Main": True,
         # "Wifi Backup": True,
         "Accelerometer": ACCELEROMETER_ON,
@@ -943,8 +994,10 @@ EMOTE_TIMER = 10
 if ACCELEROMETER_ON:
     accelerometer = Accelerometer()
 
-if WIFI_ON:
-    connect_wifi("auto", persist=False)
+if WIFI_BROADCAST_ON:
+    connect_wifi("auto", persist=False, mode="broadcast")
+elif WIFI_CONNECT_ON:
+    connect_wifi("auto", persist=False, mode="connect")
 
 if MIC_ON:
     mic = Microphone()

@@ -1,4 +1,4 @@
-"""Program pripojuje zarizeni k Wi-Fi, nastavuje hostname a pripravuje mDNS."""
+"""Program nastavuje Wi-Fi klienta/AP, hostname a sitove sluzby."""
 
 # Sitova vrstva drzi credentials, pripojeni i sdileny socket pool pro dalsi moduly.
 import os
@@ -8,6 +8,8 @@ import socketpool
 import wifi
 
 DEFAULT_FALLBACK_CHANNEL = 1
+DEFAULT_AP_SSID = "Alan_Protogen-"
+DEFAULT_AP_CHANNEL = 1
 
 
 class Wifi:
@@ -19,6 +21,9 @@ class Wifi:
         passw=None,
         backup_ssid=None,
         backup_passw=None,
+        ap_ssid=None,
+        ap_passw=None,
+        ap_channel=DEFAULT_AP_CHANNEL,
         hostname=None,
     ):
         """Nacte credentials z argumentu nebo z `settings.toml`."""
@@ -35,6 +40,11 @@ class Wifi:
             if backup_passw is not None
             else os.getenv("BACKUP_WIFI_PASSWORD")
         )
+        self.ap_ssid = ap_ssid if ap_ssid is not None else os.getenv("AP_SSID")
+        self.ap_password = (
+            ap_passw if ap_passw is not None else os.getenv("AP_PASSWORD")
+        )
+        self.ap_channel = ap_channel
         self.hostname = hostname if hostname is not None else os.getenv("DEVICE_HOSTNAME")
         if not self.hostname:
             self.hostname = "protogen"
@@ -49,9 +59,17 @@ class Wifi:
         if self.backup_wifi is None:
             self.backup_wifi = ""
             self.backup_wifi_passw = ""
+        if not self.ap_ssid:
+            self.ap_ssid = DEFAULT_AP_SSID
+        if self.ap_password is None:
+            self.ap_password = ""
 
     def connect(self, profile="auto"):
-        """Pripoji radio k siti a vytvori socket pool pro klienty a server."""
+        """Zpetna kompatibilita: vychozi runtime pouziva broadcast AP."""
+        return self.Wifi_Broadcast()
+
+    def Wifi_Connect(self, profile="auto"):
+        """Pripoji radio k existujici Wi-Fi siti a vytvori socket pool."""
         self.radio.hostname = self.hostname
         self.pool = None
         self.mdns_server = None
@@ -81,7 +99,6 @@ class Wifi:
                 continue
 
             try:
-                # Po uspesnem pripojeni se pripravi mDNS i socket pool pro HTTP server a NTP.
                 self.mdns_server = mdns.Server(self.radio)
                 self.mdns_server.hostname = self.hostname
                 self.mdns_server.instance_name = self.hostname
@@ -99,8 +116,49 @@ class Wifi:
         self.set_fallback_channel()
         return False
 
+    def Wifi_Broadcast(self):
+        """Broadcastuje vlastni AP misto pripojeni k existujici Wi-Fi siti."""
+        self.radio.hostname = self.hostname
+        self.pool = None
+        self.mdns_server = None
+        self.connected_profile = "broadcast"
+        try:
+            if self.radio.connected:
+                self.radio.stop_station()
+        except Exception:
+            pass
+
+        try:
+            if self.radio.ap_active:
+                self.radio.stop_ap()
+        except Exception:
+            pass
+
+        try:
+            self.radio.start_ap(
+                self.ap_ssid,
+                self.ap_password,
+                channel=self.ap_channel,
+                max_connections=4,
+            )
+            self.pool = socketpool.SocketPool(self.radio)
+            self.current_channel = self.ap_channel
+            print(
+                "WiFi_Broadcast AP started: {} channel {}".format(
+                    self.ap_ssid,
+                    self.ap_channel,
+                )
+            )
+            return True
+        except Exception as error:
+            print("Failed to start WiFi_Broadcast AP: {}".format(error))
+            self.pool = None
+            self.connected_profile = None
+            self.set_fallback_channel()
+            return False
+
     def disconnect(self):
-        """Odpoji Wi-Fi klienta, ale ponecha radio na fallback kanalu pro ESP-NOW."""
+        """Odpoji Wi-Fi sluzbu, ale ponecha radio na fallback kanalu pro ESP-NOW."""
         self.pool = None
         self.mdns_server = None
         self.connected_profile = None
@@ -109,12 +167,30 @@ class Wifi:
                 self.radio.stop_station()
         except Exception as error:
             print("Failed to stop WiFi station: {}".format(error))
+        try:
+            if self.radio.ap_active:
+                self.radio.stop_ap()
+        except Exception as error:
+            print("Failed to stop WiFi AP: {}".format(error))
         self.set_fallback_channel()
 
     def is_connected(self):
-        """Vrati `True`, kdyz je radio pripojene k Wi-Fi AP."""
+        """Vrati `True`, kdyz Wi-Fi radio aktivne poskytuje sitovou sluzbu."""
+        return self.is_active()
+
+    def is_station_connected(self):
+        """Vrati `True`, kdyz je radio pripojene jako klient k Wi-Fi AP."""
         try:
             return self.radio.connected
+        except Exception:
+            return False
+
+    def is_active(self):
+        """Vrati `True`, kdyz bezi klient nebo vlastni AP."""
+        try:
+            return self.pool is not None and (
+                self.radio.connected or self.radio.ap_active
+            )
         except Exception:
             return False
 
@@ -178,12 +254,13 @@ class Wifi:
     def advertise_http(self, port):
         """Zainzeruje HTTP sluzbu pres mDNS."""
         if self.mdns_server is None:
-            raise RuntimeError("Connect Wi-Fi before advertising services")
+            return False
         self.mdns_server.advertise_service(
             service_type="_http",
             protocol="_tcp",
             port=port,
         )
+        return True
 
     def base_url(self, port):
         """Vrati preferovanou lokalni URL s mDNS hostname."""
@@ -191,4 +268,13 @@ class Wifi:
 
     def ip_url(self, port):
         """Vrati primou lokalni URL s IP adresou zarizeni."""
-        return "http://{}:{}".format(self.radio.ipv4_address, port)
+        return "http://{}:{}".format(self.server_ip_address(), port)
+
+    def server_ip_address(self):
+        """Vrati IP adresu, na ktere ma poslouchat HTTP server."""
+        try:
+            if self.radio.ap_active:
+                return self.radio.ipv4_address_ap
+        except Exception:
+            pass
+        return self.radio.ipv4_address

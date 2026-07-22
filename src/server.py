@@ -17,6 +17,7 @@ class ServerClass:
         self.menu_snapshot = None
         self.menu_action_handler = None
         self.performance_provider = None
+        self.time_handler = None
         if self.wifi.pool is None:
             raise RuntimeError("wifi must be connected before starting the server")
 
@@ -68,9 +69,13 @@ class ServerClass:
         @self.server.route("/api/perf")
         def api_perf(request: Request):
             return Response(request, self.serialize_performance(), content_type="application/json")
+
+        @self.server.route("/api/time")
+        def api_time(request: Request):
+            return Response(request, self.handle_time_sync(request), content_type="application/json")
         
         # Poslech probiha primo na lokalni IP adrese zarizeni.
-        self.server.start(str(self.wifi.radio.ipv4_address), 80)
+        self.server.start(str(self.wifi.server_ip_address()), 80)
 
     def poll(self):
         """Obslouzi jednu iteraci HTTP serveru bez blokovani hlavni smycky."""
@@ -87,6 +92,10 @@ class ServerClass:
     def set_performance_provider(self, provider):
         """Zaregistruje callback vracejici posledni runtime metriky."""
         self.performance_provider = provider
+
+    def set_time_handler(self, handler):
+        """Zaregistruje callback pro nastaveni RTC z weboveho prohlizece."""
+        self.time_handler = handler
 
     def handle_menu_action(self, action):
         """Zpracuje HTTP akci a vrati uz aktualizovany snapshot menu."""
@@ -121,6 +130,65 @@ class ServerClass:
         payload = dict(self.performance_provider())
         payload["ok"] = True
         return json.dumps(payload)
+
+    def handle_time_sync(self, request):
+        """Prevezme lokalni cas z browseru a preda ho runtime hodinam."""
+        if self.time_handler is None:
+            return json.dumps({
+                "ok": False,
+                "error": "time_handler_unavailable",
+            })
+
+        try:
+            values = self._read_query_values(
+                request,
+                ("year", "month", "day", "hour", "minute", "second"),
+            )
+            result = self.time_handler(
+                int(values["year"]),
+                int(values["month"]),
+                int(values["day"]),
+                int(values["hour"]),
+                int(values["minute"]),
+                int(values["second"]),
+            )
+        except Exception as error:
+            return json.dumps({
+                "ok": False,
+                "error": str(error),
+            })
+
+        return json.dumps({
+            "ok": True,
+            "clock_text": "{:02}:{:02}".format(result.tm_hour, result.tm_min),
+        })
+
+    def _read_query_values(self, request, names):
+        """Vytahne query parametry z Request objektu napric verzemi knihovny."""
+        params = getattr(request, "query_params", None)
+        if params is not None:
+            return {name: params[name] for name in names}
+
+        path = getattr(request, "path", "")
+        raw_request = getattr(request, "raw_request", "")
+        source = path or raw_request
+        if " " in source:
+            parts = source.split(" ")
+            if len(parts) > 1:
+                source = parts[1]
+
+        query = ""
+        if "?" in source:
+            query = source.split("?", 1)[1]
+
+        parsed = {}
+        for part in query.split("&"):
+            if not part or "=" not in part:
+                continue
+            key, value = part.split("=", 1)
+            parsed[key] = value
+
+        return {name: parsed[name] for name in names}
 
     def get_index_html(self):
         """Nacte jednoduchou ovladaci webovou stranku pro menu."""

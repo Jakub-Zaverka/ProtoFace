@@ -62,7 +62,7 @@
 
     .controls {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 10px;
       padding: 16px;
     }
@@ -176,6 +176,7 @@
       <button type="button" data-action="down">Down</button>
       <button type="button" class="secondary" data-action="back">Back</button>
       <button type="button" class="secondary" data-action="menu">Refresh</button>
+      <button type="button" class="secondary" data-action="sync-time">Time</button>
     </section>
 
     <div class="status" id="status">Pripojuji se...</div>
@@ -253,6 +254,33 @@
       }
     }
 
+    async function syncBrowserTime() {
+      const now = new Date();
+      const params = new URLSearchParams({
+        year: String(now.getFullYear()),
+        month: String(now.getMonth() + 1),
+        day: String(now.getDate()),
+        hour: String(now.getHours()),
+        minute: String(now.getMinutes()),
+        second: String(now.getSeconds()),
+      });
+
+      statusNode.textContent = "Nastavuji cas...";
+      try {
+        const response = await fetch("/api/time?" + params.toString(), {
+          cache: "no-store",
+        });
+        const data = await response.json();
+        if (!data.ok) {
+          throw new Error(data.error || "time_sync_failed");
+        }
+        statusNode.textContent = "Cas nastaven";
+        await requestMenu("/api/menu");
+      } catch (error) {
+        statusNode.textContent = "Chyba nastaveni casu";
+      }
+    }
+
     document.addEventListener("click", (event) => {
       const button = event.target.closest("[data-action]");
       if (!button) {
@@ -260,6 +288,11 @@
       }
 
       const action = button.getAttribute("data-action");
+      if (action === "sync-time") {
+        syncBrowserTime();
+        return;
+      }
+
       const path = action === "menu" ? "/api/menu" : "/api/action/" + action;
       requestMenu(path);
     });

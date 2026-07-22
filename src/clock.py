@@ -64,6 +64,42 @@ class Clock:
         self._synced = False
         return self.sync_ntp()
 
+    def set_datetime(self, year, month, day, hour, minute, second):
+        """Nastavi RTC podle casu poslaneho z weboveho prohlizece."""
+        weekday = self._calculate_weekday(year, month, day)
+        yearday = self._calculate_yearday(year, month, day)
+        rtc.RTC().datetime = time.struct_time(
+            (year, month, day, hour, minute, second, weekday, yearday, -1)
+        )
+        self._synced = True
+        return rtc.RTC().datetime
+
+    def _calculate_weekday(self, year, month, day):
+        """Vrati den v tydnu ve formatu 0=pondeli az 6=nedele."""
+        month_table = (0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4)
+        if month < 3:
+            year -= 1
+        sunday_based = (
+            year
+            + year // 4
+            - year // 100
+            + year // 400
+            + month_table[month - 1]
+            + day
+        ) % 7
+        return (sunday_based + 6) % 7
+
+    def _calculate_yearday(self, year, month, day):
+        """Vrati poradove cislo dne v roce."""
+        month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        if self._is_leap_year(year):
+            month_days[1] = 29
+        return sum(month_days[: month - 1]) + day
+
+    def _is_leap_year(self, year):
+        """Vrati `True` pro prestupny rok."""
+        return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+
     def get_datetime(self):
         """Vrati aktualni datum a cas z RTC, pripadne nejdriv provede sync."""
         if not self._synced:
