@@ -461,24 +461,20 @@ class UI():
 
     def render_settings(self):
         """Vykresli menu nastaveni s aktualnimi hodnotami."""
-        lines = ["Settings"]
-        visible_items, self.settings_scroll_offset = self.get_visible_items(
-            self.settings_menu_items,
+        display_items = []
+        for item in self.settings_menu_items:
+            if item == "Back":
+                display_items.append(item)
+            else:
+                value = self.format_setting_value(item, self.setting_values.get(item, False))
+                display_items.append("{}: {}".format(item, value))
+
+        self.settings_scroll_offset = self.render_adaptive_list(
+            "Settings",
+            display_items,
             self.settings_selected_index,
             self.settings_scroll_offset,
         )
-
-        for offset_index, item in enumerate(visible_items):
-            index = self.settings_scroll_offset + offset_index
-            prefix = ">" if index == self.settings_selected_index else " "
-            # V menu nastaveni se u kazde polozky zobrazuje i aktualni stav.
-            if item == "Back":
-                lines.append(f"{prefix} {item}")
-            else:
-                value = self.format_setting_value(item, self.setting_values.get(item, False))
-                lines.append(f"{prefix} {item}: {value}")
-
-        self.render_screen_text("\n".join(lines))
 
     def format_setting_value(self, name, value):
         """Prevede interní hodnotu nastaveni na text pro OLED a web."""
@@ -514,27 +510,76 @@ class UI():
         self.render_screen_text("\n".join(lines))
 
     def render_selectable_list(self, title, items, selected_index, scroll_offset=0):
-        """Vykresli jednoduchy seznam se zvyraznenou vybranou polozkou."""
-        lines = [title]
-        visible_items, scroll_offset = self.get_visible_items(
+        """Vykresli seznam se strankovanim podle poctu skutecnych radku."""
+        return self.render_adaptive_list(
+            title,
             items,
             selected_index,
             scroll_offset,
         )
 
-        for offset_index, item in enumerate(visible_items):
-            index = scroll_offset + offset_index
-            prefix = ">" if index == selected_index else " "
-            lines.append(f"{prefix} {item}")
+    def get_wrapped_row_count(self, text, max_chars):
+        """Vrati pocet fyzickych OLED radku potrebnych pro jeden text."""
+        return max(1, (len(str(text)) + max_chars - 1) // max_chars)
+
+    def render_adaptive_list(self, title, items, selected_index, scroll_offset=0):
+        """Udrzi kurzor viditelny i kdyz polozky zabiraji vice radku."""
+        total_rows = max(1, self.display.height // self.get_line_height())
+        item_row_budget = max(1, total_rows - 1)
+        max_chars = max(1, self.display.width // self.get_char_width())
+
+        # Prefix kurzoru je soucasti polozky a zapocitava se do zalomeni.
+        item_rows = [
+            self.get_wrapped_row_count("  " + str(item), max_chars)
+            for item in items
+        ]
+
+        scroll_offset = min(max(0, scroll_offset), max(0, len(items) - 1))
+        if selected_index < scroll_offset:
+            scroll_offset = selected_index
+
+        # Posouvej zacatek seznamu, dokud se vybrana polozka nevejde do
+        # dostupne vysky. Je-li sama vyssi nez displej, zustane viditelny
+        # alespon jeji zacatek vcetne kurzoru.
+        while scroll_offset < selected_index:
+            rows_to_selection = sum(item_rows[scroll_offset:selected_index + 1])
+            if rows_to_selection <= item_row_budget:
+                break
+            scroll_offset += 1
+
+        visible_indices = []
+        used_rows = 0
+        for index in range(scroll_offset, len(items)):
+            rows = item_rows[index]
+            if visible_indices and used_rows + rows > item_row_budget:
+                break
+            visible_indices.append(index)
+            used_rows += rows
+            if used_rows >= item_row_budget:
+                break
+
+        if selected_index not in visible_indices:
+            scroll_offset = selected_index
+            visible_indices = [selected_index]
+
+        # Nadpis zustava vzdy na jednom radku; pri velkem fontu se zkrati,
+        # aby nezabral prostor, ktery patri vybrane polozce.
+        title_max_chars = max(
+            1,
+            (self.get_clock_x() - CLOCK_PADDING) // self.get_char_width(),
+        )
+        lines = [str(title)[:title_max_chars]]
+        for index in visible_indices:
+            prefix = "> " if index == selected_index else "  "
+            lines.append(prefix + str(items[index]))
 
         self.render_screen_text("\n".join(lines))
         return scroll_offset
 
     def render_screen_text(self, text):
-        """Vykresli textovou OLED obrazovku s hodinami vpravo nahore."""
+        """Vykresli OLED obrazovku a dlouhe radky staticky zalomi."""
         blocks = []
         lines = str(text).split("\n")
-        has_scroll = False
         scroll_key = (
             self.active_screen,
             tuple(lines),
@@ -547,26 +592,41 @@ class UI():
             self.text_scroll_tick = 0
             self.text_scroll_last_update = time.monotonic()
 
-        # Prvni radek ma uzsi oblast, aby se neprekryl s hodinami vpravo.
+        # Prvni fyzicky radek ma uzsi oblast kvuli hodinam. Kazdy dalsi kus
+        # dlouheho textu uz muze vyuzit celou sirku OLED.
+        char_width = self.get_char_width()
         line_height = self.get_line_height()
-        for index, line in enumerate(lines):
-            if index == 0:
-                max_width = self.get_clock_x() - CLOCK_PADDING
-            else:
-                max_width = self.display.width
+        cursor_y = 0
+        for line in lines:
+            remaining = str(line)
+            first_fragment = True
 
-            text_width = len(str(line)) * self.get_char_width()
-            offset = self.get_text_scroll_offset(text_width, max_width)
-            has_scroll = has_scroll or text_width > max_width
-            blocks.append({
-                "text": line,
-                "x": -offset,
-                "y": index * line_height,
-                "wrap": False,
-                "max_width": text_width,
-                "clip_x_min": 0,
-                "clip_x_max": max_width,
-            })
+            while first_fragment or remaining:
+                if cursor_y == 0:
+                    max_width = max(char_width, self.get_clock_x() - CLOCK_PADDING)
+                else:
+                    max_width = self.display.width
+
+                max_chars = max(1, max_width // char_width)
+                fragment = remaining[:max_chars]
+                remaining = remaining[max_chars:]
+                blocks.append({
+                    "text": fragment,
+                    "x": 0,
+                    "y": cursor_y,
+                    "wrap": False,
+                    "max_width": max_width,
+                    "clip_x_min": 0,
+                    "clip_x_max": max_width,
+                })
+                cursor_y += line_height
+                first_fragment = False
+
+                if cursor_y >= self.display.height:
+                    break
+
+            if cursor_y >= self.display.height:
+                break
 
         blocks.append({
             "text": self.clock_text,
@@ -574,9 +634,8 @@ class UI():
             "y": CLOCK_Y,
             "wrap": False,
         })
-        self.text_scroll_active = has_scroll
-        if not has_scroll:
-            self.text_scroll_tick = 0
+        self.text_scroll_active = False
+        self.text_scroll_tick = 0
 
         # Posledni pojistka proti zbytecnemu I2C flushi: i kdyz nektery vstup
         # nastavil `needs_render`, identicky framebuffer se znovu neposila.
