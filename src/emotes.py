@@ -367,6 +367,8 @@ class FaceEmoteController:
         self.eye_hearth_emote = create_image_emote("/faces/hearth.bmp", "hearth")
         self.eye_question_emote = create_image_emote("/faces/question.bmp", "question")
         self.mouth_flat_emote = create_image_emote("/faces/flat_mouth.bmp", "flat")
+        self.eye_sad_emote = create_image_emote("/faces/sad_eye.bmp", "sad eye")
+        self.mouth_sad_emote = create_image_emote("/faces/sad_mouth.bmp", "sad mouth")
         # Template: sem pridej novy asset pro emote.
         # self.eye_happy_emote = create_image_emote("/faces/eye_happy.bmp", "happy")
         # self.mouth_smile_emote = create_image_emote("/faces/mouth_smile.bmp", "smile")
@@ -537,6 +539,13 @@ class FaceEmoteController:
             requests["eye"]["source"] = self.eye_blink_emote
             requests["eye"]["duration"] = 1
             requests["mouth"]["source"] = self.mouth_flat_emote
+            requests["mouth"]["duration"] = 1
+            return True
+
+        if active_menu_emote == "sad":
+            requests["eye"]["source"] = self.eye_sad_emote
+            requests["eye"]["duration"] = 1
+            requests["mouth"]["source"] = self.mouth_sad_emote
             requests["mouth"]["duration"] = 1
             return True
 
