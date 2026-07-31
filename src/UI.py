@@ -31,7 +31,7 @@ class UI():
         self.display = display
         # Tyto seznamy urcuji, co se v menu skutecne zobrazi a v jakem poradi.
         self.main_menu_items = ["Emotes", "Settings", "Debug"]
-        self.emotes_menu_items = ["Hearth", "Narrow", "Sad", "Question", "Cross", "Open eye", "Sleep", "Blep", "Dead", "Clock", "Back"]
+        self.emotes_menu_items = ["Hearth", "Narrow", "Sad", "Question", "Cross", "Open eye", "UwU", "UwU Full", "OwO", "Sleep", "Blep", "Dead", "Clock", "Back"]
         self.settings_menu_items = [
             "Display",
             "Brightness",

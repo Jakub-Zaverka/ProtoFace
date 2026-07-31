@@ -500,6 +500,16 @@ class FaceEmoteController:
         self.mouth_flat_emote = create_image_emote("/faces/flat_mouth.bmp", "flat")
         self.eye_sad_emote = create_image_emote("/faces/sad_eye.bmp", "sad eye")
         self.mouth_sad_emote = create_image_emote("/faces/sad_mouth.bmp", "sad mouth")
+        self.eye_uwu_emote = create_image_emote("/faces/u.bmp", "uwu eye")
+        self.mouth_wwww_emote = create_image_emote("/faces/wwww.bmp", "wwww mouth")
+        self.whole_uwu_emote = create_image_emote("/faces/uwu_text.bmp", "uwu full")
+        blank_nose_bitmap = displayio.Bitmap(32, 16, 1)
+        blank_nose_palette = displayio.Palette(1)
+        blank_nose_palette[0] = 0x000000
+        self.blank_nose_emote = create_image_emote(
+            (blank_nose_bitmap, blank_nose_palette),
+            "blank nose",
+        )
         # Template: sem pridej novy asset pro emote.
         # self.eye_happy_emote = create_image_emote("/faces/eye_happy.bmp", "happy")
         # self.mouth_smile_emote = create_image_emote("/faces/mouth_smile.bmp", "smile")
@@ -648,6 +658,29 @@ class FaceEmoteController:
             requests["eye"]["source"] = self.eye_boop_emote
             requests["eye"]["duration"] = 1
             requests["mouth"]["source"] = self.mouth_speak_emote
+            requests["mouth"]["duration"] = 1
+            return True
+
+        if active_menu_emote == "uwu":
+            requests["eye"]["source"] = self.eye_uwu_emote
+            requests["eye"]["duration"] = 1
+            requests["nose"]["source"] = self.blank_nose_emote
+            requests["nose"]["duration"] = 1
+            requests["mouth"]["source"] = self.mouth_wwww_emote
+            requests["mouth"]["duration"] = 1
+            return True
+
+        if active_menu_emote == "uwu full":
+            requests["whole"]["source"] = self.whole_uwu_emote
+            requests["whole"]["duration"] = 1
+            return True
+
+        if active_menu_emote == "owo":
+            requests["eye"]["source"] = self.eye_boop_emote
+            requests["eye"]["duration"] = 1
+            requests["nose"]["source"] = self.blank_nose_emote
+            requests["nose"]["duration"] = 1
+            requests["mouth"]["source"] = self.mouth_wwww_emote
             requests["mouth"]["duration"] = 1
             return True
         
