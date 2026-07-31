@@ -8,10 +8,12 @@ Projekt zobrazuje animovany oblicej na HUB75 RGB LED matici `128x32` slozene ze 
 
 - vykreslit oblicej z oddelenych casti `eye`, `nose`, `mouth`
 - prehravat fullscreen emote a GIF animace na cele matici
+- plynule morfovat staticke BMP emotes presunem pixelu mezi jejich pozicemi
 - otevrit usta pri zvuku z mikrofonu
 - spustit `boop` reakci podle proximity senzoru
 - posouvat oblicej podle pohybu z akcelerometru
 - zobrazit OLED menu pro emote, nastaveni a debug
+- staticky zalamovat dlouhe OLED polozky a drzet vybrany kurzor na obrazovce
 - pres Wi-Fi synchronizovat cas a zobrazovat ho na OLED i RGB matici
 - prijimat jednoduche HTTP prikazy `up`, `down`, `ok`, `back` jako dalkove ovladani menu
 - merit odezvu hlavni smycky, vytizeni runtime, pomale sekce a volnou pamet
@@ -83,6 +85,7 @@ Ze standardnich modulu CircuitPython se pouzivaji napr.:
   - nacitani BMP a GIF snimku do oblasti displeje
   - cache nactenych BMP assetu v RGB565
   - rychla cesta `update_matrix_rgb565()` pro uz prevedene pixely
+  - cteni aktivnich pixelu a vykreslovani mezisnimku pro BMP morph
   - globalni rainbow efekt s throttlingem pres `RAINBOW_FRAME_SKIP`
   - globalni jas pres `BRIGHTNESS_STEPS`
 
@@ -90,6 +93,7 @@ Ze standardnich modulu CircuitPython se pouzivaji napr.:
   - definice emote zdroju
   - sprava regionu `eye`, `nose`, `mouth`, `whole`
   - blikani, boop, reakce na mikrofon
+  - trikrokovy pixelovy prechod mezi statickymi BMP zdroji
   - fullscreen hodiny kreslene vlastnim 5x7 fontem
 
 - `UI.py`
@@ -97,6 +101,8 @@ Ze standardnich modulu CircuitPython se pouzivaji napr.:
   - menu `Emotes`, `Settings`, `Debug`
   - synchronizace stavu toggle voleb
   - prijem lokalnich tlacitek i HTTP prikazu
+  - adaptivni zalamovani a strankovani podle skutecneho poctu OLED radku
+  - ochrana proti opakovanemu odeslani stejneho framebufferu pres I2C
 
 - `server.py`
   - jednoduchy HTTP server nad `adafruit_httpserver`
@@ -148,8 +154,13 @@ Adresar `faces/` obsahuje obrazky a GIFy pouzivane jako emote:
 - `nose.bmp`
 - `sleep.bmp`
 - `cross.bmp`
-- `giphy.gif`
-- `dice.gif`
+- `blep.bmp`
+- `flat_mouth.bmp`
+- `hearth.bmp`
+- `question.bmp`
+- `sad_eye.bmp`
+- `sad_mouth.bmp`
+- `test_colors.bmp`
 
 ## Architektura aplikace
 
@@ -223,6 +234,11 @@ Prvni fyzicka strana je v kodu zrcadlena pres `mirror_x=True` a
 
 Pro cached assety se pouziva `update_matrix_rgb565()`, ktera preskakuje opakovanou normalizaci barev a minimalizuje pocet Python volani v pixelove smycce. To snizilo spicky pri prepnuti emote z radove stovek ms na desitky ms v beznem pripade.
 
+Pro pixelovy morph umi `Display` vratit aktualni aktivni RGB565 pixely v
+logickych souradnicich a vykreslit ridky mezisnimek pres `draw_sparse_rgb565()`.
+U zrcadleneho panelu se fyzicke X nejdriv prevede zpet na logicke X, aby kazdy
+pixel zacal presne na sve aktualne zobrazene pozici.
+
 Rainbow/wave efekt se neprepocitava v kazdem refreshi. Konstantou `RAINBOW_FRAME_SKIP = 3` se efekt aktualizuje kazdy treti refresh, coz snizuje cukani pri soucasnem behu efektu a prepinani emote.
 
 ## OLED UI
@@ -270,16 +286,23 @@ Hlavni menu:
 
 Menu emote:
 
+- `Hearth`
+- `Narrow`
+- `Sad`
+- `Question`
 - `Clock`
 - `Cross`
 - `Open eye`
 - `Sleep`
+- `Blep`
+- `Dead`
 - `Back`
 
 Menu nastaveni:
 
 - `Display`
 - `Brightness`
+- `Font`
 - `Fan`
 - `Boop`
 - `Boop Calibrate`
@@ -288,9 +311,8 @@ Menu nastaveni:
 - `Mic`
 - `Blink`
 - `Accelerometer`
-- `Wifi`
-- `Wifi Main`
-- `Wifi Backup`
+- `Wifi_Broadcast`
+- `Wifi_Connect`
 - `Verbose`
 - `Back`
 
@@ -303,7 +325,17 @@ Debug screen zobrazuje aktualni radky s hodnotami:
 - prumerny cas prace a odhad vytizeni
 - volnou pamet
 
-Prvni radek UI se automaticky zkracuje, aby se neprekryval s hodinami vpravo nahore.
+OLED se neprekresluje v kazde iteraci hlavni smycky. `needs_render` se nastavi
+jen pri zmene obrazovky, vyberu, hodnoty nastaveni, casu nebo debug textu.
+Pred zapisem se navic porovna podpis vyslednych textovych bloku s poslednim
+uspesne vykreslenym obsahem; identicky framebuffer se znovu neposila pres I2C.
+
+Dlouhe polozky se neposouvaji vodorovne. Staticky se zalomi na vice fyzickych
+radku podle aktualni velikosti fontu. Seznamy pocitaji vysku kazde polozky po
+zalomeni, podle ni posouvaji `scroll_offset` a vzdy zachovaji na obrazovce
+zacatek vybrane polozky s kurzorem. Nadpis ma rezervovany jeden radek a muze se
+zkratit, aby neodsunul kurzor mimo displej. Prvni radek stale ponechava prostor
+pro hodiny vpravo nahore.
 
 Debug hodnoty se na OLED aktualizuji jen pri otevrene Debug obrazovce a nejvyse jednou za `DEBUG_UI_UPDATE_INTERVAL = 1.0` s. Duvodem je rychlost SSD1306 pres I2C: caste `display.show()` volani blokovalo hlavni smycku a drive zpusobovalo spicky kolem stovek ms.
 
@@ -327,6 +359,8 @@ Kazdy region si drzi:
 - delku trvani
 - uplynuly cas
 - GIF player, pokud je zdroj animovany
+- seznam sparovanych pixelu a aktualni krok BMP prechodu
+- priznak, zda prechod konci navratem do idle zdroje
 
 ### Idle stav
 
@@ -346,7 +380,7 @@ Pokud neni aktivni menu emote:
 
 - proximity:
   - pri `proximity_value > BOOP_PROXIMITY_THRESHOLD` se aktivuje `boop` oko
-  - aktualni hodnota konstanty je `60`
+  - aktualni hodnota konstanty je `225`
 
 - blikani:
   - po urcitem poctu cyklu se aktivuje `eye_blink.bmp`
@@ -369,15 +403,47 @@ Pri otevrenem detailu emote ma menu prioritu nad automatickymi reakcemi.
 - `Cross`
   - kriz v regionu oka
 
+- `Hearth`
+  - srdce v regionu oka
+
+- `Narrow`
+  - privrene oko a rovna usta
+
+- `Sad`
+  - kombinuje `/faces/sad_eye.bmp` a `/faces/sad_mouth.bmp`
+
+- `Question`
+  - otaznik v regionu oka
+
 - `Sleep`
   - spici oko
 
 - `Open eye`
   - otevrene oko a mluvici usta
 
-`FaceEmoteController` ma v kodu pripravenou i podporu pro `Gif`, `Dice` a
-`Color`, ale aktualni `UI.py` je v menu nezobrazuje. Pro jejich zpristupneni je
-potreba je pridat do `self.emotes_menu_items`.
+- `Blep`
+  - vyplazeny jazyk v regionu ust
+
+- `Dead`
+  - cerveny kriz, nos a jazyk
+
+### Pixelovy prechod BMP
+
+Pri zmene statickeho BMP zdroje se obraz neprepne okamzite. Controller precte
+aktualne zobrazene aktivni pixely, kazdy stary pixel sparuje s nejblizsim
+volnym cilovym pixelem a po dobu `PIXEL_TRANSITION_FRAMES = 3` interpoluje jeho
+pozici i RGB565 barvu. Pokud maji obrazky rozdilny pocet aktivnich pixelu,
+prebytecne stare body zhasnou na miste a nove body se na miste rozsviti.
+
+Stejny mechanismus se pouziva pri navratu regionu do idle obliceje a na obou
+fyzickych panelech. GIF zdroje, pametove bitmapy jako hodiny a fullscreen
+dynamicky obsah se nadale prepinaji okamzite. Sparovani probiha jednou pri
+zahajeni prechodu; na pomale desce muze vytvorit kratkou spicku v sekci
+`emote`, ale jednotlive mezisnimky uz jen prekresluji ridky seznam pixelu.
+
+V kodu zustava zaklad prehravani GIFu a zakomentovane vetve pro `Gif`, `Dice`
+a `Color`. Tyto polozky nejsou v aktualnim menu ani v dodane sade assetu a bez
+doplneni souboru a aktivace vetvi se nepovazuji za dostupne emotes.
 
 ## Konfigurace
 
@@ -440,6 +506,7 @@ Pres UI lze za behu menit:
 
 - `Display`
 - `Brightness`
+- `Font`
 - `Fan`
 - `Boop`
 - `Boop Calibrate`
@@ -448,9 +515,8 @@ Pres UI lze za behu menit:
 - `Mic`
 - `Blink`
 - `Accelerometer`
-- `Wifi`
-- `Wifi Main`
-- `Wifi Backup`
+- `Wifi_Broadcast`
+- `Wifi_Connect`
 - `Verbose`
 
 `SSD1306_ON` se cte jen pri startu, v UI se neprepina.
@@ -595,10 +661,14 @@ Puvodni mereni ukazovalo dlouhe blokace hlavni smycky:
 Po upravach:
 
 - Debug OLED se aktualizuje jen na Debug obrazovce a max. 1x/s
+- bezne OLED obrazovky se odesilaji jen pri zmene obsahu
+- identicke textove bloky jsou odfiltrovane pred drahym I2C `display.show()`
+- dlouhe UI polozky se staticky zalamuji bez casovaneho prekreslovani
 - BMP assety jsou cachovane po prvnim nacteni
 - cached RGB565 pixely se kopiruji rychlejsi cestou bez dalsi konverze
 - clock emote se regeneruje jen pri zmene casu
 - rainbow/wave efekt se prepocitava kazdy treti refresh
+- staticke BMP emotes pouzivaji trikrokovy pixelovy morph
 
 Typicke namerene hodnoty po optimalizaci byly priblizne:
 
@@ -607,7 +677,9 @@ Typicke namerene hodnoty po optimalizaci byly priblizne:
 - `load` kolem `40-50 %`
 - bezne `slowest=emote` kolem desitek ms
 
-Obcasne spicky kolem `150-250 ms` jsou stale mozne pri OLED flushi, GC, prepnuti emote nebo narocnejsim efektu. To je prakticka hranice kombinace CircuitPythonu, pixelovych Python smycek, SSD1306 pres I2C a HUB75 refreshu v jedne synchronni smycce.
+Obcasne spicky jsou stale mozne pri skutecne zmene OLED obsahu, GC, prvotnim
+nacteni BMP, nejblizsim parovani pixelu pri zahajeni morphu nebo narocnejsim
+efektu. Prubezne vysoke `slowest=ui` mimo zmeny obsahu uz ocekavane neni.
 
 ### Verbose rezim
 
@@ -667,7 +739,18 @@ Krome `print()` se logy ukladaji i do vnitrniho list bufferu.
 
 - OLED zpomaluje smycku
   - debug hodnoty se maji aktualizovat jen na Debug obrazovce
-  - pokud je `slowest=ui`, omez dalsi prekreslovani OLED nebo zvys `DEBUG_UI_UPDATE_INTERVAL`
+  - over, zda se skutecne meni hodiny, debug radky nebo stav menu
+  - bez zmeny obsahu ma `UI.render_ui()` pres `needs_render` okamzite skoncit
+  - pokud je `slowest=ui` jen na Debug obrazovce, zvys `DEBUG_UI_UPDATE_INTERVAL`
+
+- kurzor nebo polozka menu neni videt
+  - UI strankuje podle poctu fyzickych radku po zalomeni
+  - over aktualni velikost `Font`; velmi dlouha polozka muze zaplnit vsechny dostupne radky
+  - nadpis se muze zkratit, aby prvni radek vybrane polozky zustal viditelny
+
+- pixelovy prechod zacina z opacne strany
+  - over `mirror_x`; `get_active_pixels_rgb565()` musi vracet logicke, ne fyzicky zrcadlene X
+  - oba panely maji zahajit morph na prave zobrazenych pozicich
 
 ## Poznamky k aktualnimu stavu
 
@@ -683,4 +766,6 @@ README odpovida aktualnimu kodu v repozitari, vcetne:
 - runtime nastaveni `BLINK_ON`, `DISPLAY_ON`, `BOOP_RAINBOW_ON`, `RAINBOW_OVERRIDE_ON`, `Brightness`, `Font` a `Fan`
 - performance mereni v `performance.py`
 - cache BMP assetu a rychle RGB565 cesty v `display.py`
+- adaptivni viceradkove OLED menu a deduplikace framebufferu v `UI.py`
+- trikrokove pixelove prechody statickych BMP emotes v `emotes.py`
 - zpomaleneho blink intervalu pres `BLINK_TIME_SET = 100`

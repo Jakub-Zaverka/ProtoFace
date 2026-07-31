@@ -640,6 +640,8 @@ class FaceEmoteController:
         if active_menu_emote == "sleep":
             requests["eye"]["source"] = self.eye_sleep_emote
             requests["eye"]["duration"] = 1
+            requests["mouth"]["source"] = self.mouth_flat_emote
+            requests["mouth"]["duration"] = 1
             return True
 
         if active_menu_emote == "open eye":
@@ -688,7 +690,7 @@ class FaceEmoteController:
         if active_menu_emote == "dead":
             cross_emote = self.cross_emote.copy()
             cross_emote["color_override"] = 0xFF0000
-            blep_emote = self.mouth_blep_emote.copy()
+            blep_emote = self.mouth_sad_emote.copy()
             blep_emote["color_override"] = 0xFF0000
             nose_idle_emote = self.nose_idle_emote.copy()
             nose_idle_emote["color_override"] = 0xFF0000

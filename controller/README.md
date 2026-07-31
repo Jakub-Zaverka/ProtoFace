@@ -30,6 +30,10 @@ Stejne akce jde posilat i ze serial monitoru:
 - `d` -> `Ok`
 - `a` -> `Home` / `Back`
 
+Pohyb `Up` a `Down` meni vzdy jednu logickou polozku menu. OLED na prijimaci
+muze dlouhy nazev zalomit na vice fyzickych radku; controller kvuli tomu
+neposila zadne dodatecne kroky a kurzor i strankovani resi `src/UI.py`.
+
 Opakovane odeslani stejneho tlacitka je blokovane na
 `BUTTON_REPEAT_BLOCK_MS = 400`, aby jeden stisk neposlal vice prikazu.
 
