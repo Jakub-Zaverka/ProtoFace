@@ -80,6 +80,7 @@ class UI():
         self.text_scroll_last_update = 0.0
         self.text_scroll_active = False
         self.text_scroll_key = None
+        self.last_render_signature = None
 
     def _consume_api_call(self, server: ServerClass, expected_value):
         """Spotrebuje jednu cekajici HTTP akci, pokud odpovida ocekavani."""
@@ -411,8 +412,10 @@ class UI():
 
     def render_ui(self):
         """Prekresli aktualni OLED obrazovku jen kdyz je to potreba."""
-        # OLED se neprekresluje zbytecne v kazde iteraci, jen pri zmene stavu.
-        if not self.needs_render and not self.should_animate_text_scroll():
+        # Casovany posuv dlouheho textu se zde zamerne nepouziva. Kazdy zapis
+        # celeho framebufferu pres I2C je drahy, proto OLED menime jen tehdy,
+        # kdyz nektera setter/input udalost skutecne zmenila jeho obsah.
+        if not self.needs_render:
             return
 
         if self.active_screen == SCREEN_MAIN_MENU:
@@ -574,7 +577,30 @@ class UI():
         self.text_scroll_active = has_scroll
         if not has_scroll:
             self.text_scroll_tick = 0
-        self.display.show_text_blocks(blocks, clear=True)
+
+        # Posledni pojistka proti zbytecnemu I2C flushi: i kdyz nektery vstup
+        # nastavil `needs_render`, identicky framebuffer se znovu neposila.
+        signature = (
+            self.get_char_width(),
+            self.get_line_height(),
+            tuple(
+                (
+                    block.get("text", ""),
+                    block.get("x", 0),
+                    block.get("y", 0),
+                    block.get("wrap", True),
+                    block.get("max_width"),
+                    block.get("clip_x_min"),
+                    block.get("clip_x_max"),
+                )
+                for block in blocks
+            ),
+        )
+        if signature == self.last_render_signature:
+            return
+
+        if self.display.show_text_blocks(blocks, clear=True):
+            self.last_render_signature = signature
 
     def get_text_scroll_offset(self, text_width, max_width):
         """Spocita vodorovny ping-pong posun pro dlouhy radek."""

@@ -27,6 +27,7 @@ MIC_SPEAK_THRESHOLD = 5
 MIC_RELEASE_THRESHOLD = 3
 MIC_SPEAK_HOLD_FRAMES = 6
 MIC_CONTROLS_MOUTH = True
+PIXEL_TRANSITION_FRAMES = 3
 
 
 # Zakladni stavebni bloky pro regiony a jejich zdroje.
@@ -47,6 +48,10 @@ def create_region(name, matrix_group, idle_source=None, hidden_when_idle=False):
         "loop": False,
         "frame_index": 0,
         "frame_count": 0,
+        # Staticke BMP emotes se mezi sebou morfuji pohybem aktivnich pixelu.
+        "transition_moves": None,
+        "transition_frame": 0,
+        "transition_to_idle": False,
     }
 
 
@@ -96,12 +101,118 @@ def _clear_region_player(region):
     region["frame_count"] = 0
 
 
+def _rgb565_lerp(start, end, step, total):
+    """Interpoluje dve RGB565 barvy bez prevodu do pametove narocnych objektu."""
+    start_r = (start >> 11) & 0x1F
+    start_g = (start >> 5) & 0x3F
+    start_b = start & 0x1F
+    end_r = (end >> 11) & 0x1F
+    end_g = (end >> 5) & 0x3F
+    end_b = end & 0x1F
+    red = start_r + ((end_r - start_r) * step // total)
+    green = start_g + ((end_g - start_g) * step // total)
+    blue = start_b + ((end_b - start_b) * step // total)
+    return (red << 11) | (green << 5) | blue
+
+
+def _active_pixels(matrix, width, height):
+    """Seradi rozsvicene pixely tak, aby bylo parovani prechodu deterministicke."""
+    pixels = []
+    for y in range(min(len(matrix), height)):
+        row = matrix[y]
+        for x in range(min(len(row), width)):
+            color = row[x]
+            if color:
+                pixels.append((x, y, color))
+    return pixels
+
+
+def _build_transition_moves(old_pixels, new_pixels):
+    """Sparuje kazdy stary bod s nejblizsim volnym novym bodem."""
+    moves = []
+    available_new = list(new_pixels)
+
+    for old_x, old_y, old_color in old_pixels:
+        if not available_new:
+            moves.append((old_x, old_y, old_color, old_x, old_y, 0))
+            continue
+
+        nearest_index = 0
+        nearest_distance = None
+        for index, candidate in enumerate(available_new):
+            new_x, new_y, _ = candidate
+            delta_x = new_x - old_x
+            delta_y = new_y - old_y
+            distance = delta_x * delta_x + delta_y * delta_y
+            if nearest_distance is None or distance < nearest_distance:
+                nearest_index = index
+                nearest_distance = distance
+                if distance == 0:
+                    break
+
+        new_x, new_y, new_color = available_new.pop(nearest_index)
+        moves.append((old_x, old_y, old_color, new_x, new_y, new_color))
+
+    for new_x, new_y, new_color in available_new:
+        moves.append((new_x, new_y, 0, new_x, new_y, new_color))
+
+    return moves
+
+
+def _start_image_transition(display, region, source, to_idle=False):
+    """Pripravi morph z prave zobrazeneho snimku do statickeho obrazku."""
+    if _get_source_type(source) != "image":
+        return False
+
+    content = _get_source_content(source)
+    if not isinstance(content, str) or not content.lower().endswith(".bmp"):
+        return False
+
+    matrix_group = region["matrix"]
+    new_matrix = display.get_image_matrix_rgb565(content)
+    old_pixels = display.get_active_pixels_rgb565(matrix_group)
+    new_pixels = _active_pixels(new_matrix, matrix_group["width"], matrix_group["height"])
+
+    region["transition_moves"] = _build_transition_moves(old_pixels, new_pixels)
+    region["transition_frame"] = 0
+    region["transition_to_idle"] = to_idle
+    matrix_group["tile"].hidden = False
+    return True
+
+
+def _tick_image_transition(display, region):
+    """Posune vsechny sparovane pixely o jeden krok k jejich cili."""
+    moves = region["transition_moves"]
+    if moves is None:
+        return False
+
+    region["transition_frame"] += 1
+    step = region["transition_frame"]
+    pixels = []
+    for old_x, old_y, old_color, new_x, new_y, new_color in moves:
+        x = old_x + ((new_x - old_x) * step + PIXEL_TRANSITION_FRAMES // 2) // PIXEL_TRANSITION_FRAMES
+        y = old_y + ((new_y - old_y) * step + PIXEL_TRANSITION_FRAMES // 2) // PIXEL_TRANSITION_FRAMES
+        color = _rgb565_lerp(old_color, new_color, step, PIXEL_TRANSITION_FRAMES)
+        pixels.append((x, y, color))
+
+    display.draw_sparse_rgb565(region["matrix"], pixels)
+    if step < PIXEL_TRANSITION_FRAMES:
+        return True
+
+    region["transition_moves"] = None
+    region["transition_frame"] = 0
+    return False
+
+
 def _load_source_into_region(display, region, source):
     """Nahraje novy zdroj do regionu a pripravi stav animace."""
     region["matrix"]["tile"].hidden = False
     source_type = _get_source_type(source)
 
     _clear_region_player(region)
+    region["transition_moves"] = None
+    region["transition_frame"] = 0
+    region["transition_to_idle"] = False
 
     if source_type == "gif":
         # GIF se neprepocitava dopredu. Jen se otevre soubor a pripravi prvni frame.
@@ -175,6 +286,9 @@ def _reset_region_to_idle(display, region):
     region["current_source"] = None
     region["duration"] = 0
     region["matrix"]["tile"].hidden = region["hidden_when_idle"]
+    region["transition_moves"] = None
+    region["transition_frame"] = 0
+    region["transition_to_idle"] = False
 
     if region["idle_source"] is not None:
         display.load_bmp_into_matrix(
@@ -190,11 +304,15 @@ def update_emote(display, region, source=None, duration=0, verbose=False):
     if source is not None:
         # Kdyz prisel novy zdroj, region se prepne nebo pokracuje v animaci.
         if not region["active"] or region["current_source"] != source:
-            _load_source_into_region(display, region, source)
+            _clear_region_player(region)
+            if not _start_image_transition(display, region, source):
+                _load_source_into_region(display, region, source)
             emote_started = True
             if verbose:
                 print("emote")
                 print(region["name"], _get_source_name(source))
+        elif region["transition_moves"] is not None:
+            _tick_image_transition(display, region)
         elif region["is_gif"]:
             if not _tick_gif_region(display, region):
                 _load_source_into_region(display, region, source)
@@ -205,13 +323,26 @@ def update_emote(display, region, source=None, duration=0, verbose=False):
         region["duration"] = duration
 
     elif region["active"]:
+        if region["transition_moves"] is not None:
+            if not _tick_image_transition(display, region) and region["transition_to_idle"]:
+                _reset_region_to_idle(display, region)
+            return region["active"], emote_started
+
         region["elapsed"] += 1
 
         if region["is_gif"]:
             if not _tick_gif_region(display, region):
                 _reset_region_to_idle(display, region)
         elif region["elapsed"] >= region["duration"]:
-            _reset_region_to_idle(display, region)
+            if region["idle_source"] is not None and _start_image_transition(
+                display,
+                region,
+                region["idle_source"],
+                to_idle=True,
+            ):
+                region["elapsed"] = 0
+            else:
+                _reset_region_to_idle(display, region)
 
     return region["active"], emote_started
 

@@ -217,6 +217,32 @@ class Display:
         """Prepise oblast uz pripravenymi RGB565 pixely bez dalsi konverze."""
         self._update_matrix(matrix_group, matrix, normalize=False)
 
+    def get_active_pixels_rgb565(self, matrix_group):
+        """Vrati jen rozsvicene RGB565 pixely oblasti pro pametove setrne prechody."""
+        bitmap = matrix_group["base_bitmap"]
+        pixels = []
+        mirror_x = matrix_group.get("mirror_x", False)
+        width = matrix_group["width"]
+        for y in range(matrix_group["height"]):
+            for x in range(width):
+                color = bitmap[x, y]
+                if color:
+                    # `base_bitmap` uz obsahuje fyzicky zrcadlene X. Prechod ale
+                    # pracuje v logickych souradnicich, proto zrcadleni vratime.
+                    logical_x = width - 1 - x if mirror_x else x
+                    pixels.append((logical_x, y, color))
+        return pixels
+
+    def draw_sparse_rgb565(self, matrix_group, pixels):
+        """Vykresli seznam `(x, y, color)` jako jeden snimek prechodu."""
+        matrix_group["base_bitmap"].fill(0)
+        matrix_group["bitmap"].fill(0)
+        matrix_group["active_pixels"] = []
+
+        for x, y, color in pixels:
+            if color and 0 <= x < matrix_group["width"] and 0 <= y < matrix_group["height"]:
+                self._set_base_pixel_rgb565(matrix_group, x, y, color)
+
     def _update_matrix(self, matrix_group, matrix, normalize=True):
         """Spolecna implementace kopirovani pixelu do bitmapove oblasti."""
         target_width = matrix_group["width"]
@@ -585,19 +611,22 @@ class Display:
 
     def load_bmp_into_matrix(self, matrix_group, source):
         """Nahraje BMP nebo pametovou bitmapu a premaluje ji do RGB565 bitmapy."""
+        matrix = self.get_image_matrix_rgb565(source)
+        self.update_matrix_rgb565(matrix_group, matrix)
+
+    def get_image_matrix_rgb565(self, source):
+        """Nacte obrazkovy zdroj do RGB565 radku a umozni jejich sdileni s prechody."""
         # Zdroj muze byt bud cesta k souboru, nebo dvojice `(bitmap, pixel_shader)`.
         if isinstance(source, str):
             cached_matrix = self.image_cache.get(source)
             if cached_matrix is not None:
-                self.update_matrix_rgb565(matrix_group, cached_matrix)
-                return
+                return cached_matrix
 
             if source.lower().endswith(".bmp"):
                 try:
                     matrix = self._load_24bit_bmp_rows(source)
                     self.image_cache[source] = matrix
-                    self.update_matrix_rgb565(matrix_group, matrix)
-                    return
+                    return matrix
                 except ValueError:
                     pass
 
@@ -622,4 +651,4 @@ class Display:
         if isinstance(source, str):
             self.image_cache[source] = matrix
 
-        self.update_matrix_rgb565(matrix_group, matrix)
+        return matrix
