@@ -152,10 +152,44 @@ void setup()
     // Kratke cekani, aby se seriovy monitor stihl pripojit po startu desky.
     delay(2000);
 
-    WiFi.scanNetworks();
-    WiFi.disconnect();
-
+    WiFi.mode(WIFI_STA);
     int networkCount = WiFi.scanNetworks();
+    bool esp_channel_set = false;
+
+    auto setChannelFromSsid = [&](const char *ssid) -> bool
+    {
+        if (ssid == nullptr || ssid[0] == '\0')
+        {
+            return false;
+        }
+
+        for (int i = 0; i < networkCount; i++)
+        {
+            if (WiFi.SSID(i) != ssid)
+            {
+                continue;
+            }
+
+            esp_err_t result = esp_wifi_set_channel(
+                WiFi.channel(i),
+                WIFI_SECOND_CHAN_NONE
+            );
+            if (result != ESP_OK)
+            {
+                Serial.print("Failed to set channel for: ");
+                Serial.println(ssid);
+                return false;
+            }
+
+            Serial.print("Using network: ");
+            Serial.println(WiFi.SSID(i));
+            Serial.print("On channel: ");
+            Serial.println(WiFi.channel(i));
+            return true;
+        }
+
+        return false;
+    };
 
     if (networkCount == 0)
     {
@@ -166,78 +200,16 @@ void setup()
         Serial.print("Nalezeno siti: ");
         Serial.println(networkCount);
 
-        bool esp_channel_set = false;
-        WiFi.mode(WIFI_STA);
-
-        for (int i = 0; i < networkCount; i++)
-        {
-            if (WiFi.SSID(i) == BACKUP_WIFI_SSID)
-            {
-                esp_wifi_set_channel(WiFi.channel(i), WIFI_SECOND_CHAN_NONE);
-                Serial.print("Connected to:");
-                Serial.println(WiFi.SSID(i));
-                Serial.print("On channel:");
-                Serial.println(WiFi.channel(i));
-                esp_channel_set = true;
-                break;
-            }
-        }
-
-        for (int i = 0; i < networkCount; i++)
-        {
-            if (false)
-            {
-                Serial.print(i + 1);
-                Serial.print(": ");
-
-                Serial.print(WiFi.SSID(i));
-                Serial.print(" | signal: ");
-                Serial.print(WiFi.RSSI(i));
-                Serial.print(" dBm");
-
-                Serial.print(" | kanal: ");
-                Serial.print(WiFi.channel(i));
-
-                Serial.print(" | sifrovani: ");
-                Serial.println(WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "open" : "secured");
-
-                delay(10);
-            }
-
-            if (!esp_channel_set && WiFi.SSID(i) == HOME_WIFI_SSID)
-            {
-                esp_wifi_set_channel(WiFi.channel(i), WIFI_SECOND_CHAN_NONE);
-                Serial.print("Connected to:");
-                Serial.println(WiFi.SSID(i));
-                Serial.print("On channel:");
-                Serial.println(WiFi.channel(i));
-                esp_channel_set = true;
-            }
-            else if (!esp_channel_set && WiFi.SSID(i) == BACKUP_WIFI_SSID)
-            {
-                esp_wifi_set_channel(WiFi.channel(i), WIFI_SECOND_CHAN_NONE);
-                Serial.print("Connected to:");
-                Serial.println(WiFi.SSID(i));
-                Serial.print("On channel:");
-                Serial.println(WiFi.channel(i));
-                esp_channel_set = true;
-            }
-            else if (!esp_channel_set)
-            {
-                // Zatim nic, rozhodneme az po kontrole vsech nalezenych siti.
-            }
-            else
-            {
-                // Nebo nalezen jiný channel
-            }
-        }
+        // Portal AP je jediny autoritativni zdroj kanalu pro ESP-NOW.
+        esp_channel_set = setChannelFromSsid(AP_SSID);
 
         if (!esp_channel_set)
         {
-            Serial.println("No Known WIFI available");
+            Serial.println("No known ESP-NOW channel source available");
         }
     }
 
+    WiFi.scanDelete();
 
     // inicializujeme ESP-NOW a pridame prijimaci desku jako peer.
     initEspNow();

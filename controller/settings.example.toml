@@ -1,7 +1,3 @@
-HOME_WIFI_SSID = ""
-HOME_WIFI_PASSWORD = ""
-
-BACKUP_WIFI_SSID = ""
-BACKUP_WIFI_PASSWORD = ""
+AP_SSID = "Alan Protogen"
 
 DEVICE_HOSTNAME="protogen-controller"

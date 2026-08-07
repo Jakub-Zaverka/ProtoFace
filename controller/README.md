@@ -65,10 +65,12 @@ se starsim firmwarem bez `button4`.
 
 ESP-NOW musi bezet na stejnem Wi-Fi kanalu jako prijimaci MatrixPortal S3.
 Controller se k routeru neprihlasuje natrvalo; pri startu provede scan siti,
-nejdrive zkusi `BACKUP_WIFI_SSID`, potom `HOME_WIFI_SSID` a nastavi radio na
-kanal nalezene site pres `esp_wifi_set_channel(...)`.
+vyhleda pouze `AP_SSID` portalu a radio nastavi na jeho skutecny kanal pres
+`esp_wifi_set_channel(...)`. `AP_SSID` proto musi odpovidat hodnote nastavene
+na MatrixPortalu; jine site controller pro volbu kanalu nepouziva.
 
-Pokud controller zadnou znamou sit nenajde, vypise `No Known WIFI available`.
+Pokud controller zadnou znamou sit nenajde, vypise
+`No known ESP-NOW channel source available`.
 ESP-NOW peer se presto inicializuje, ale komunikace bude fungovat jen pokud je
 radio nahodou na stejnem kanalu jako receiver.
 
@@ -92,11 +94,7 @@ Copy-Item settings.example.toml settings.toml
 Pouzivane hodnoty:
 
 ```toml
-HOME_WIFI_SSID = ""
-HOME_WIFI_PASSWORD = ""
-
-BACKUP_WIFI_SSID = ""
-BACKUP_WIFI_PASSWORD = ""
+AP_SSID = "Alan Protogen"
 
 DEVICE_HOSTNAME = "protogen-controller"
 ```

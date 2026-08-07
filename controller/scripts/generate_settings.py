@@ -61,6 +61,7 @@ if not settings_path.exists():
     )
 
 settings = parse_flat_toml(settings_path)
+settings.setdefault("AP_SSID", "Alan Protogen")
 
 lines = [
     "#pragma once",
