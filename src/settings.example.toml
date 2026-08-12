@@ -14,8 +14,8 @@ MIC_ON = true
 APDS_ON = true
 BOOP_RAINBOW_ON = true
 RAINBOW_OVERRIDE_ON = false
+SMOOTH_TRANSITIONS_ON = false
 SSD1306_ON = true
 WIFI_CONNECT_ON = false
 WIFI_BROADCAST_ON = true
 VERBOSE = false
-    

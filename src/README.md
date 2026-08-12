@@ -429,11 +429,13 @@ Pri otevrenem detailu emote ma menu prioritu nad automatickymi reakcemi.
 
 ### Pixelovy prechod BMP
 
-Pri zmene statickeho BMP zdroje se obraz neprepne okamzite. Controller precte
-aktualne zobrazene aktivni pixely, kazdy stary pixel sparuje s nejblizsim
-volnym cilovym pixelem a po dobu `PIXEL_TRANSITION_FRAMES = 3` interpoluje jeho
-pozici i RGB565 barvu. Pokud maji obrazky rozdilny pocet aktivnich pixelu,
-prebytecne stare body zhasnou na miste a nove body se na miste rozsviti.
+Pixelovy morph je volitelny pres `Smooth Transitions` v nastaveni a ve vychozim
+stavu je vypnuty, takze se staticke BMP obrazy prepinaji okamzite. Po zapnuti
+controller precte aktualne zobrazene aktivni pixely, kazdy stary pixel sparuje
+s nejblizsim volnym cilovym pixelem a po dobu `PIXEL_TRANSITION_FRAMES = 3`
+interpoluje jeho pozici i RGB565 barvu. Pokud maji obrazky rozdilny pocet
+aktivnich pixelu, prebytecne stare body zhasnou na miste a nove body se na miste
+rozsviti.
 
 Stejny mechanismus se pouziva pri navratu regionu do idle obliceje a na obou
 fyzickych panelech. GIF zdroje, pametove bitmapy jako hodiny a fullscreen
@@ -469,6 +471,7 @@ BLINK_ON = true
 DISPLAY_ON = true
 BOOP_RAINBOW_ON = true
 RAINBOW_OVERRIDE_ON = false
+SMOOTH_TRANSITIONS_ON = false
 VERBOSE = false
 ```
 
@@ -488,6 +491,7 @@ Pouzivane klice:
 - `DISPLAY_ON`
 - `BOOP_RAINBOW_ON`
 - `RAINBOW_OVERRIDE_ON`
+- `SMOOTH_TRANSITIONS_ON`
 - `VERBOSE`
 
 `BLINK_ON` a `DISPLAY_ON` nejsou v `settings.example.toml` uvedene, ale runtime
@@ -514,6 +518,7 @@ Pres UI lze za behu menit:
 - `Rainbow Override`
 - `Mic`
 - `Blink`
+- `Smooth Transitions`
 - `Accelerometer`
 - `Wifi_Broadcast`
 - `Wifi_Connect`

@@ -7,6 +7,7 @@ from I2C_sim import get_i2c
 
 SAMPLE_SIZE = 20
 LIS3DH_ADDRESSES = (0x19, 0x18)
+I2C_EXCEPTIONS = (OSError, ValueError, RuntimeError)
 
 
 class Accelerometer:
@@ -42,7 +43,7 @@ class Accelerometer:
                 sensor.range = adafruit_lis3dh.RANGE_2_G
                 self._missing_reported = False
                 return sensor
-            except (OSError, ValueError):
+            except I2C_EXCEPTIONS:
                 pass
 
         detected_addresses = self._scan_i2c_addresses()
@@ -64,7 +65,7 @@ class Accelerometer:
                 return [hex(address) for address in self.i2c.scan()]
             finally:
                 self.i2c.unlock()
-        except OSError:
+        except I2C_EXCEPTIONS:
             return []
     
     def print_axis(self):
@@ -79,7 +80,7 @@ class Accelerometer:
 
         try:
             self.axis = self.sensor.acceleration
-        except OSError:
+        except I2C_EXCEPTIONS:
             self.sensor = self._initialize_sensor()
             return False
 
@@ -98,7 +99,7 @@ class Accelerometer:
 
             try:
                 self.axis = self.sensor.acceleration
-            except OSError:
+            except I2C_EXCEPTIONS:
                 self.sensor = self._initialize_sensor()
                 return False
 

@@ -12,6 +12,7 @@ OLED_FONT_SCALE_STEPS = ((3, 2), (2, 1), (5, 2))
 OLED_FONT_SCALE_INDEX = 0
 FONT_GLYPH_WIDTH = 5
 FONT_GLYPH_HEIGHT = 7
+I2C_EXCEPTIONS = (OSError, ValueError, RuntimeError)
 
 _shared_i2c = None
 
@@ -154,7 +155,7 @@ def scan_i2c():
             return [hex(address) for address in i2c.scan()]
         finally:
             i2c.unlock()
-    except OSError:
+    except I2C_EXCEPTIONS:
         return []
 
 
@@ -173,7 +174,7 @@ class APDSSensor:
             self.sensor.enable_proximity = True
             self.sensor.enable_color = True
             return True
-        except (OSError, ValueError):
+        except I2C_EXCEPTIONS:
             self.sensor = None
             return False
 
@@ -188,14 +189,14 @@ class APDSSensor:
 
         try:
             return self.sensor.proximity
-        except OSError:
+        except I2C_EXCEPTIONS:
             # Pri obcasne chybe sbernice se senzor zkusí znovu vytvorit.
             self.sensor = None
             if not self._initialize_sensor():
                 return None
             try:
                 return self.sensor.proximity
-            except OSError:
+            except I2C_EXCEPTIONS:
                 self.sensor = None
                 return None
 
@@ -207,13 +208,13 @@ class APDSSensor:
         try:
             if self.sensor.color_data_ready:
                 return self.sensor.color_data
-        except OSError:
+        except I2C_EXCEPTIONS:
             self.sensor = None
             if self._initialize_sensor():
                 try:
                     if self.sensor.color_data_ready:
                         return self.sensor.color_data
-                except OSError:
+                except I2C_EXCEPTIONS:
                     self.sensor = None
                     return None
         return None
@@ -243,7 +244,7 @@ class OLEDDisplay:
             self.display.write_cmd(0xA0)
             self.display.write_cmd(0xC0)
             return True
-        except (OSError, ValueError):
+        except I2C_EXCEPTIONS:
             self.display = None
             return False
 
@@ -266,7 +267,7 @@ class OLEDDisplay:
             self.display.fill(0)
             self.display.show()
             return True
-        except OSError:
+        except I2C_EXCEPTIONS:
             self.display = None
             return False
 
@@ -289,7 +290,7 @@ class OLEDDisplay:
 
             self.display.show()
             return True
-        except OSError:
+        except I2C_EXCEPTIONS:
             self.display = None
             return False
 
@@ -323,7 +324,7 @@ class OLEDDisplay:
 
             self.display.show()
             return True
-        except OSError:
+        except I2C_EXCEPTIONS:
             self.display = None
             return False
 

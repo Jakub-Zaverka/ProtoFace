@@ -52,6 +52,7 @@ SETTING_ENV_KEYS = {
     "Boop Rainbow": "BOOP_RAINBOW_ON",
     "Rainbow Override": "RAINBOW_OVERRIDE_ON",
     "Blink": "BLINK_ON",
+    "Smooth Transitions": "SMOOTH_TRANSITIONS_ON",
     "Wifi_Connect": "WIFI_CONNECT_ON",
     "Wifi_Broadcast": "WIFI_BROADCAST_ON",
     "Verbose": "VERBOSE",
@@ -70,6 +71,7 @@ SETTING_BITS = {
     "RAINBOW_OVERRIDE_ON": 8,
     "WIFI_CONNECT_ON": 9,
     "WIFI_BROADCAST_ON": 10,
+    "SMOOTH_TRANSITIONS_ON": 11,
 }
 VALUE_SETTING_KEYS = (
     "BRIGHTNESS_INDEX",
@@ -275,6 +277,7 @@ WIFI_BROADCAST_ON = read_bool_setting("WIFI_BROADCAST_ON", True)
 WIFI_ON = WIFI_CONNECT_ON or WIFI_BROADCAST_ON
 VERBOSE = read_bool_setting("VERBOSE", False)
 BLINK_ON = read_bool_setting("BLINK_ON", True)
+SMOOTH_TRANSITIONS_ON = read_bool_setting("SMOOTH_TRANSITIONS_ON", False)
 DISPLAY_ON = read_bool_setting("DISPLAY_ON", True)
 BOOP_RAINBOW_ON = read_bool_setting("BOOP_RAINBOW_ON", True)
 RAINBOW_OVERRIDE_ON = read_bool_setting("RAINBOW_OVERRIDE_ON", False)
@@ -287,6 +290,7 @@ RUNTIME_SETTINGS.update({
     "WIFI_BROADCAST_ON": WIFI_BROADCAST_ON,
     "VERBOSE": VERBOSE,
     "BLINK_ON": BLINK_ON,
+    "SMOOTH_TRANSITIONS_ON": SMOOTH_TRANSITIONS_ON,
     "DISPLAY_ON": DISPLAY_ON,
     "BOOP_RAINBOW_ON": BOOP_RAINBOW_ON,
     "RAINBOW_OVERRIDE_ON": RAINBOW_OVERRIDE_ON,
@@ -635,6 +639,7 @@ def initialize_display_stack():
             "whole": whole_matrix_right,
         }],
         blink_enabled=BLINK_ON,
+        smooth_transitions_enabled=SMOOTH_TRANSITIONS_ON,
         blink_time_set=BLINK_TIME_SET,
         emote_timer=EMOTE_TIMER,
         boop_timer=BOOP_TIMER,
@@ -707,6 +712,7 @@ def toggle_setting(setting_name):
     global MIC_ON
     global mic
     global BLINK_ON
+    global SMOOTH_TRANSITIONS_ON
     global DISPLAY_ON
     global BOOP_RAINBOW_ON
     global RAINBOW_OVERRIDE_ON
@@ -718,14 +724,14 @@ def toggle_setting(setting_name):
         # Pri zapnuti vytvor senzor jen jednou a pak uz ho znovu pouzivej.
         ACCELEROMETER_ON = not ACCELEROMETER_ON
         if ACCELEROMETER_ON and accelerometer is None:
-            accelerometer = Accelerometer()
+            accelerometer = initialize_optional_component("Accelerometer", Accelerometer)
         persist_runtime_setting(setting_name, ACCELEROMETER_ON)
         return setting_name
 
     if setting_name == "Boop":
         APDS_ON = not APDS_ON
         if APDS_ON and apds is None:
-            apds = APDSSensor()
+            apds = initialize_optional_component("APDS", APDSSensor)
         persist_runtime_setting(setting_name, APDS_ON)
         return setting_name
 
@@ -733,9 +739,9 @@ def toggle_setting(setting_name):
         current_value = None
         if APDS_ON:
             if apds is None:
-                apds = APDSSensor()
+                apds = initialize_optional_component("APDS", APDSSensor)
             if apds is not None:
-                current_value = apds.get_value()
+                current_value = read_optional_component("APDS", apds.get_value)
         boop_threshold = boop_threshold_tracker.calibrate(current_value)
         return setting_name
 
@@ -756,6 +762,13 @@ def toggle_setting(setting_name):
     if setting_name == "Blink":
         BLINK_ON = not BLINK_ON
         persist_runtime_setting(setting_name, BLINK_ON)
+        return setting_name
+
+    if setting_name == "Smooth Transitions":
+        SMOOTH_TRANSITIONS_ON = not SMOOTH_TRANSITIONS_ON
+        if face_emotes is not None:
+            face_emotes.set_smooth_transitions_enabled(SMOOTH_TRANSITIONS_ON)
+        persist_runtime_setting(setting_name, SMOOTH_TRANSITIONS_ON)
         return setting_name
 
     if setting_name == "Brightness":
@@ -809,7 +822,7 @@ def toggle_setting(setting_name):
     if setting_name == "Mic":
         MIC_ON = not MIC_ON
         if MIC_ON and mic is None:
-            mic = Microphone()
+            mic = initialize_optional_component("Mic", Microphone)
         persist_runtime_setting(setting_name, MIC_ON)
         return setting_name
     
@@ -840,6 +853,7 @@ def get_setting_values():
         "Boop Rainbow": BOOP_RAINBOW_ON,
         "Rainbow Override": RAINBOW_OVERRIDE_ON,
         "Blink": BLINK_ON,
+        "Smooth Transitions": SMOOTH_TRANSITIONS_ON,
         "Brightness": display_module.get_brightness_scale(),
         "Font": get_oled_font_scale_label(),
         "Fan": FAN_SPEED_PERCENT,
@@ -867,6 +881,25 @@ def format_debug_value(value):
     if value is None:
         return "--"
     return str(value)
+
+
+def initialize_optional_component(name, component_class):
+    """Vytvori volitelnou komponentu, aniz by jeji absence zastavila runtime."""
+    try:
+        return component_class()
+    except (OSError, ValueError, RuntimeError) as error:
+        print("{} unavailable: {}".format(name, error))
+        return None
+
+
+def read_optional_component(name, reader):
+    """Bezpecne precte senzor a pri chybe vrati chybejici hodnotu."""
+    try:
+        return reader()
+    except (OSError, ValueError, RuntimeError) as error:
+        if VERBOSE:
+            print("{} read failed: {}".format(name, error))
+        return None
 
 
 def build_debug_lines(movement, mic_value, proximity_value, boop_threshold):
@@ -992,7 +1025,7 @@ EMOTE_TIMER = 10
 
 # Inicializace hardwaru podle nactenych runtime voleb.
 if ACCELEROMETER_ON:
-    accelerometer = Accelerometer()
+    accelerometer = initialize_optional_component("Accelerometer", Accelerometer)
 
 if WIFI_BROADCAST_ON:
     connect_wifi("auto", persist=False, mode="broadcast")
@@ -1000,15 +1033,15 @@ elif WIFI_CONNECT_ON:
     connect_wifi("auto", persist=False, mode="connect")
 
 if MIC_ON:
-    mic = Microphone()
+    mic = initialize_optional_component("Mic", Microphone)
 
 if APDS_ON:
-    apds = APDSSensor()
+    apds = initialize_optional_component("APDS", APDSSensor)
 
 boop_threshold_tracker = BoopThresholdTracker()
 
 if SSD1306_ON:
-    oled = OLEDDisplay()
+    oled = initialize_optional_component("OLED", OLEDDisplay)
 
 # Tlacitka pouzivaji pull-up, stisk tedy vraci logickou nulu.
 btn_down = digitalio.DigitalInOut(board.BUTTON_DOWN)
@@ -1022,7 +1055,7 @@ if DISPLAY_ON:
     initialize_display_stack()
 
 # OLED UI je volitelne. Kdyz neni OLED aktivni, zbytek runtime muze bezet dal.
-ui = UI(oled) if SSD1306_ON else None
+ui = UI(oled) if oled is not None else None
 if server is not None and ui is not None:
     server.set_menu_action_handler(handle_http_menu_action)
     server.set_menu_snapshot(refresh_ui_snapshot(ui))
@@ -1053,9 +1086,9 @@ while True:
     # 1) Nacti vstupy ze senzoru.
     perf.begin_section("sensors")
     debug_screen_active = ui is not None and ui.active_screen == SCREEN_DEBUG_MENU
-    movement = accelerometer.derivation() if ACCELEROMETER_ON and accelerometer is not None else None
-    mic_value = mic.get_value() if MIC_ON and mic is not None and (MIC_READ_ON or debug_screen_active) else None
-    proximity_value = apds.get_value() if APDS_ON and apds is not None else None
+    movement = read_optional_component("Accelerometer", accelerometer.derivation) if ACCELEROMETER_ON and accelerometer is not None else None
+    mic_value = read_optional_component("Mic", mic.get_value) if MIC_ON and mic is not None and (MIC_READ_ON or debug_screen_active) else None
+    proximity_value = read_optional_component("APDS", apds.get_value) if APDS_ON and apds is not None else None
     boop_active = face_emotes is not None and face_emotes.is_boop_active()
     boop_threshold = boop_threshold_tracker.update(
         proximity_value,
@@ -1150,7 +1183,7 @@ while True:
             now = time.monotonic()
             if not was_debug_screen or now - last_debug_ui_update >= DEBUG_UI_UPDATE_INTERVAL:
                 if not was_debug_screen and mic_value is None and MIC_ON and mic is not None:
-                    mic_value = mic.get_value()
+                    mic_value = read_optional_component("Mic", mic.get_value)
                 ui.set_debug_lines(
                     build_debug_lines(
                         movement,

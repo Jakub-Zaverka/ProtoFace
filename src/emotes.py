@@ -297,7 +297,14 @@ def _reset_region_to_idle(display, region):
         )
 
 
-def update_emote(display, region, source=None, duration=0, verbose=False):
+def update_emote(
+    display,
+    region,
+    source=None,
+    duration=0,
+    smooth_transitions_enabled=False,
+    verbose=False,
+):
     """Posune jeden region v case a pripadne do nej prepne novy zdroj."""
     emote_started = False
 
@@ -305,7 +312,11 @@ def update_emote(display, region, source=None, duration=0, verbose=False):
         # Kdyz prisel novy zdroj, region se prepne nebo pokracuje v animaci.
         if not region["active"] or region["current_source"] != source:
             _clear_region_player(region)
-            if not _start_image_transition(display, region, source):
+            if not smooth_transitions_enabled or not _start_image_transition(
+                display,
+                region,
+                source,
+            ):
                 _load_source_into_region(display, region, source)
             emote_started = True
             if verbose:
@@ -334,11 +345,15 @@ def update_emote(display, region, source=None, duration=0, verbose=False):
             if not _tick_gif_region(display, region):
                 _reset_region_to_idle(display, region)
         elif region["elapsed"] >= region["duration"]:
-            if region["idle_source"] is not None and _start_image_transition(
-                display,
-                region,
-                region["idle_source"],
-                to_idle=True,
+            if (
+                smooth_transitions_enabled
+                and region["idle_source"] is not None
+                and _start_image_transition(
+                    display,
+                    region,
+                    region["idle_source"],
+                    to_idle=True,
+                )
             ):
                 region["elapsed"] = 0
             else:
@@ -454,6 +469,7 @@ class FaceEmoteController:
         boop_timer=5,
         boop_rainbow_enabled=True,
         rainbow_override_enabled=False,
+        smooth_transitions_enabled=False,
         blink_emote_timer=None,
         verbose=False,
     ):
@@ -472,6 +488,7 @@ class FaceEmoteController:
         self.boop_timer = boop_timer
         self.boop_rainbow_enabled = boop_rainbow_enabled
         self.rainbow_override_enabled = rainbow_override_enabled
+        self.smooth_transitions_enabled = smooth_transitions_enabled
         self.blink_emote_timer = (
             blink_emote_timer
             if blink_emote_timer is not None
@@ -605,6 +622,7 @@ class FaceEmoteController:
                     regions[name],
                     source=requests[name]["source"],
                     duration=requests[name]["duration"],
+                    smooth_transitions_enabled=self.smooth_transitions_enabled,
                     verbose=self.verbose,
                 )
                 started[name] = started.get(name, False) or region_started
@@ -875,6 +893,25 @@ class FaceEmoteController:
         """Zapne nebo vypne rainbow efekt pro vsechny aktivni emote."""
         self.rainbow_override_enabled = enabled
         self._sync_color_effect()
+
+    def set_smooth_transitions_enabled(self, enabled):
+        """Prepne morphovani BMP a pri vypnuti dokonci rozbehnuty prechod skokem."""
+        self.smooth_transitions_enabled = enabled
+        if enabled:
+            return
+
+        for regions in self.region_sets:
+            for region in regions.values():
+                if region["transition_moves"] is None:
+                    continue
+                if region["transition_to_idle"]:
+                    _reset_region_to_idle(self.display, region)
+                elif region["current_source"] is not None:
+                    _load_source_into_region(
+                        self.display,
+                        region,
+                        region["current_source"],
+                    )
 
     def _sync_color_effect(self):
         """Synchronizuje globalni duhu a barevne override aktivnich emotes."""
