@@ -176,7 +176,7 @@ def _start_image_transition(display, region, source, to_idle=False):
     region["transition_moves"] = _build_transition_moves(old_pixels, new_pixels)
     region["transition_frame"] = 0
     region["transition_to_idle"] = to_idle
-    matrix_group["tile"].hidden = False
+    display.set_matrix_hidden(matrix_group, False)
     return True
 
 
@@ -206,7 +206,7 @@ def _tick_image_transition(display, region):
 
 def _load_source_into_region(display, region, source):
     """Nahraje novy zdroj do regionu a pripravi stav animace."""
-    region["matrix"]["tile"].hidden = False
+    display.set_matrix_hidden(region["matrix"], False)
     source_type = _get_source_type(source)
 
     _clear_region_player(region)
@@ -285,7 +285,7 @@ def _reset_region_to_idle(display, region):
     region["elapsed"] = 0
     region["current_source"] = None
     region["duration"] = 0
-    region["matrix"]["tile"].hidden = region["hidden_when_idle"]
+    display.set_matrix_hidden(region["matrix"], region["hidden_when_idle"])
     region["transition_moves"] = None
     region["transition_frame"] = 0
     region["transition_to_idle"] = False
@@ -559,7 +559,7 @@ class FaceEmoteController:
 
         # Fullscreen vrstva je v idle stavu schovana a pri startu se nactou idle obrazky obliceje.
         for regions in self.region_sets:
-            regions["whole"]["matrix"]["tile"].hidden = True
+            self.display.set_matrix_hidden(regions["whole"]["matrix"], True)
             self.display.load_bmp_into_matrix(
                 regions["eye"]["matrix"],
                 _get_source_content(self.eye_idle_emote),
@@ -608,9 +608,9 @@ class FaceEmoteController:
     def _set_face_hidden(self, hidden):
         """Skryje nebo zobrazi tri zakladni casti obliceje najednou."""
         for regions in self.region_sets:
-            regions["eye"]["matrix"]["tile"].hidden = hidden
-            regions["nose"]["matrix"]["tile"].hidden = hidden
-            regions["mouth"]["matrix"]["tile"].hidden = hidden
+            self.display.set_matrix_hidden(regions["eye"]["matrix"], hidden)
+            self.display.set_matrix_hidden(regions["nose"]["matrix"], hidden)
+            self.display.set_matrix_hidden(regions["mouth"]["matrix"], hidden)
 
     def _update_region_sets(self, requests):
         """Aplikuje stejne pozadavky na vsechny fyzicke sady regionu."""

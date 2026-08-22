@@ -88,6 +88,7 @@ class Display:
         self.effect_tick = 0
         self.rainbow_frame_counter = 0
         self.rainbow_wheel = self._create_rainbow_wheel()
+        self.dirty = False
 
         # Pri znovuvytvoreni displeje se musi nejdriv uvolnit predchozi instance.
         displayio.release_displays()
@@ -192,7 +193,33 @@ class Display:
             )
             matrix_group["enabled"] = enabled
             if not enabled:
-                matrix_group["tile"].hidden = True
+                self.set_matrix_hidden(matrix_group, True)
+
+    def mark_dirty(self):
+        """Oznaci framebuffer jako zmeneny pro nejblizsi refresh."""
+        self.dirty = True
+
+    def set_matrix_hidden(self, matrix_group, hidden):
+        """Zmeni viditelnost oblasti a oznaci displej jen pri realne zmene."""
+        hidden = bool(hidden)
+        tile = matrix_group["tile"]
+        if tile.hidden == hidden:
+            return False
+        tile.hidden = hidden
+        self.mark_dirty()
+        return True
+
+    def set_matrix_position(self, matrix_group, x, y):
+        """Posune oblast a oznaci displej jen pokud se poloha skutecne zmenila."""
+        tile = matrix_group["tile"]
+        x = int(x)
+        y = int(y)
+        if tile.x == x and tile.y == y:
+            return False
+        tile.x = x
+        tile.y = y
+        self.mark_dirty()
+        return True
 
     def to_bitmap(self, matrix, color_count=RGB565_COLOR_COUNT):
         """Prevede 2D seznam pixelu na `displayio.Bitmap`."""
@@ -242,6 +269,7 @@ class Display:
         for x, y, color in pixels:
             if color and 0 <= x < matrix_group["width"] and 0 <= y < matrix_group["height"]:
                 self._set_base_pixel_rgb565(matrix_group, x, y, color)
+        self.mark_dirty()
 
     def _update_matrix(self, matrix_group, matrix, normalize=True):
         """Spolecna implementace kopirovani pixelu do bitmapove oblasti."""
@@ -263,6 +291,7 @@ class Display:
 
                 for x in range(copy_width):
                     self._set_base_pixel_rgb565(matrix_group, x, y, row[x])
+            self.mark_dirty()
             return
 
         for y in range(copy_height):
@@ -271,10 +300,12 @@ class Display:
 
             for x in range(copy_width):
                 self._set_base_pixel(matrix_group, x, y, row[x])
+        self.mark_dirty()
 
     def set_pixel(self, matrix_group, x, y, value):
         """Nastavi jeden pixel uvnitr dane oblasti."""
         self._set_base_pixel(matrix_group, x, y, value)
+        self.mark_dirty()
 
     def fill_matrix(self, matrix_group, value):
         """Vyplni celou oblast jednou barvou."""
@@ -284,6 +315,7 @@ class Display:
         matrix_group["active_pixels"] = []
 
         if color == 0:
+            self.mark_dirty()
             return
 
         for y in range(matrix_group["height"]):
@@ -291,6 +323,7 @@ class Display:
                 self._set_base_pixel_rgb565(matrix_group, x, y, color)
 
         self._render_effect_for_matrix(matrix_group)
+        self.mark_dirty()
 
     def refresh(self):
         """Odesle zmeny bitmap do fyzickeho displeje."""
@@ -301,7 +334,12 @@ class Display:
                 self.rainbow_frame_counter = 0
                 self.effect_tick = (self.effect_tick + 1) % 256
                 self._render_all_effects(visible_only=True)
+                self.mark_dirty()
+        if not self.dirty:
+            return False
         self.window.refresh()
+        self.dirty = False
+        return True
 
     def set_color_effect(self, effect):
         """Nastavi globalni barevny efekt pro vsechny regiony."""
@@ -315,6 +353,7 @@ class Display:
             self.effect_tick = 0
             self.rainbow_frame_counter = 0
         self._render_all_effects()
+        self.mark_dirty()
 
     def set_matrix_color_effect(self, matrix_group, effect, color=None):
         """Nastavi barevny efekt jednoho regionu, pokud neni aktivni globalni duha."""
@@ -336,6 +375,7 @@ class Display:
         matrix_group["color_effect"] = effect
         matrix_group["solid_effect_color"] = solid_color
         self._render_effect_for_matrix(matrix_group)
+        self.mark_dirty()
 
     def deinit(self):
         """Uvolni RGB matici tak, aby sla pozdeji znovu vytvorit."""
@@ -608,6 +648,7 @@ class Display:
                     )
                 else:
                     self._set_base_pixel(matrix_group, x, y, pixel_value)
+        self.mark_dirty()
 
     def load_bmp_into_matrix(self, matrix_group, source):
         """Nahraje BMP nebo pametovou bitmapu a premaluje ji do RGB565 bitmapy."""

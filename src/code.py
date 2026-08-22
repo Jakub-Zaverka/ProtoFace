@@ -1145,8 +1145,11 @@ while True:
                 mouth_matrix_right,
                 whole_matrix_right,
             ):
-                matrix_group["tile"].x -= movement_x
-                matrix_group["tile"].y += movement_y
+                display.set_matrix_position(
+                    matrix_group,
+                    matrix_group["tile"].x - movement_x,
+                    matrix_group["tile"].y + movement_y,
+                )
         else:
             for matrix_group in (
                 eye_matrix,
@@ -1158,8 +1161,11 @@ while True:
                 mouth_matrix_right,
                 whole_matrix_right,
             ):
-                matrix_group["tile"].x = matrix_group["position_x"]
-                matrix_group["tile"].y = matrix_group["position_y"]
+                display.set_matrix_position(
+                    matrix_group,
+                    matrix_group["position_x"],
+                    matrix_group["position_y"],
+                )
     perf.end_section()
 
     # 4) Synchronizuj OLED UI, zpracuj vstup a zjisti, jestli je otevreny nejaky emote z menu.
