@@ -4,6 +4,7 @@
 import gc
 import displayio
 import gifio
+import random
 import time
 
 # Jednoduchy 5x7 font pouzity pro fullscreen text na RGB matici.
@@ -36,6 +37,9 @@ MIC_RELEASE_THRESHOLD = 3
 MIC_SPEAK_HOLD_FRAMES = 6
 MIC_CONTROLS_MOUTH = True
 PIXEL_TRANSITION_FRAMES = 3
+SLOT_SPIN_FRAMES = 28
+SLOT_REEL_STOP_FRAMES = (16, 22, 28)
+SLOT_SYMBOL_COUNT = 6
 
 
 # Zakladni stavebni bloky pro regiony a jejich zdroje.
@@ -475,6 +479,99 @@ def create_name_bitmap():
     return bitmap, palette
 
 
+def _slot_set_pixel(bitmap, x, y, color):
+    """Bezpecne rozsviti pixel uvnitr slot bitmapy."""
+    if 0 <= x < bitmap.width and 0 <= y < bitmap.height:
+        bitmap[x, y] = color
+
+
+def _slot_draw_line(bitmap, x0, y0, x1, y1, color):
+    """Nakresli jednoduchou celočíselnou caru."""
+    dx = abs(x1 - x0)
+    sx = 1 if x0 < x1 else -1
+    dy = -abs(y1 - y0)
+    sy = 1 if y0 < y1 else -1
+    error = dx + dy
+    while True:
+        _slot_set_pixel(bitmap, x0, y0, color)
+        if x0 == x1 and y0 == y1:
+            break
+        doubled = 2 * error
+        if doubled >= dy:
+            error += dy
+            x0 += sx
+        if doubled <= dx:
+            error += dx
+            y0 += sy
+
+
+def _slot_draw_symbol(bitmap, symbol, center_x, center_y, color):
+    """Nakresli jeden z lehkych kasino symbolu do valce."""
+    if symbol == 0:  # 7
+        _slot_draw_line(bitmap, center_x - 4, center_y - 5, center_x + 4, center_y - 5, color)
+        _slot_draw_line(bitmap, center_x + 4, center_y - 5, center_x - 1, center_y + 5, color)
+    elif symbol == 1:  # ctverec
+        _slot_draw_line(bitmap, center_x - 4, center_y - 4, center_x + 4, center_y - 4, color)
+        _slot_draw_line(bitmap, center_x + 4, center_y - 4, center_x + 4, center_y + 4, color)
+        _slot_draw_line(bitmap, center_x + 4, center_y + 4, center_x - 4, center_y + 4, color)
+        _slot_draw_line(bitmap, center_x - 4, center_y + 4, center_x - 4, center_y - 4, color)
+    elif symbol == 2:  # kolecko
+        for dx, dy in ((-2, -5), (-1, -5), (0, -5), (1, -5), (2, -5),
+                       (-4, -3), (4, -3), (-5, -2), (5, -2), (-5, -1), (5, -1),
+                       (-5, 0), (5, 0), (-5, 1), (5, 1), (-5, 2), (5, 2),
+                       (-4, 3), (4, 3), (-2, 5), (-1, 5), (0, 5), (1, 5), (2, 5)):
+            _slot_set_pixel(bitmap, center_x + dx, center_y + dy, color)
+    elif symbol == 3:  # trojuhelnik
+        _slot_draw_line(bitmap, center_x, center_y - 5, center_x - 5, center_y + 5, color)
+        _slot_draw_line(bitmap, center_x - 5, center_y + 5, center_x + 5, center_y + 5, color)
+        _slot_draw_line(bitmap, center_x + 5, center_y + 5, center_x, center_y - 5, color)
+    elif symbol == 4:  # diamant
+        _slot_draw_line(bitmap, center_x, center_y - 6, center_x - 5, center_y, color)
+        _slot_draw_line(bitmap, center_x - 5, center_y, center_x, center_y + 6, color)
+        _slot_draw_line(bitmap, center_x, center_y + 6, center_x + 5, center_y, color)
+        _slot_draw_line(bitmap, center_x + 5, center_y, center_x, center_y - 6, color)
+    else:  # plus
+        _slot_draw_line(bitmap, center_x, center_y - 5, center_x, center_y + 5, color)
+        _slot_draw_line(bitmap, center_x - 5, center_y, center_x + 5, center_y, color)
+
+
+def create_slot_bitmap(symbols, spinning=False):
+    """Vykresli tri valce slot machine na celou 64x32 matici."""
+    bitmap = displayio.Bitmap(64, 32, 7)
+    palette = displayio.Palette(7)
+    palette[0] = 0x000000
+    palette[1] = 0xFFFFFF
+    palette[2] = 0xFF2020
+    palette[3] = 0xFFD020
+    palette[4] = 0x20D0FF
+    palette[5] = 0x40FF60
+    palette[6] = 0xD060FF
+
+    # Ram automatu a oddelovace valcu.
+    for x in range(2, 62):
+        bitmap[x, 2] = 3
+        bitmap[x, 29] = 3
+    for y in range(2, 30):
+        bitmap[2, y] = 3
+        bitmap[61, y] = 3
+    for x in (22, 41):
+        for y in range(4, 28):
+            bitmap[x, y] = 1
+
+    centers = (12, 32, 51)
+    for index in range(3):
+        color = 1 + (symbols[index] % 6)
+        _slot_draw_symbol(bitmap, symbols[index], centers[index], 16, color)
+
+    # Pri toceni pridaji bocni tecky jednoduchý pocit pohybu.
+    if spinning:
+        for y in (7, 11, 21, 25):
+            bitmap[4, y] = 4
+            bitmap[59, y] = 4
+
+    return bitmap, palette
+
+
 def create_clock_emote(device_clock):
     """Vytvori fullscreen emote se zobrazenym aktualnim casem."""
     return {
@@ -535,6 +632,14 @@ class FaceEmoteController:
         self.clock_emote = None
         self.clock_text = None
         self.name_emote = create_image_emote(create_name_bitmap(), "name")
+        self.slot_symbols = [0, 1, 2]
+        self.slot_frame = 0
+        self.slot_spinning = False
+        self.slot_boop_latched = False
+        self.slot_emote = create_image_emote(
+            create_slot_bitmap(self.slot_symbols),
+            "slots",
+        )
 
         # Zde jsou zaregistrovane vsechny assety, ktere controller umi pouzit.
         self.eye_idle_emote = create_image_emote("/faces/eye.bmp", "eye")
@@ -703,6 +808,11 @@ class FaceEmoteController:
             requests["whole"]["duration"] = 1
             return True
 
+        if active_menu_emote == "slots":
+            requests["whole"]["source"] = self.slot_emote
+            requests["whole"]["duration"] = 1
+            return True
+
         # if active_menu_emote == "gif":
         #     requests["whole"]["source"] = self.eye_load_emote
         #     requests["whole"]["duration"] = 1
@@ -825,6 +935,39 @@ class FaceEmoteController:
 
         return self.clock_emote
 
+    def _update_slot_machine(self, proximity_value, boop_threshold):
+        """Spusti slot na hranu boopu a postupne zastavi jednotlive valce."""
+        boop_now = (
+            proximity_value is not None
+            and proximity_value > boop_threshold
+        )
+        if boop_now and not self.slot_boop_latched and not self.slot_spinning:
+            self.slot_spinning = True
+            self.slot_frame = 0
+
+        self.slot_boop_latched = boop_now
+        if not self.slot_spinning:
+            return
+
+        self.slot_frame += 1
+        changed = False
+        cadence = 1 if self.slot_frame < 12 else 2
+        if self.slot_frame % cadence == 0:
+            for reel in range(3):
+                if self.slot_frame <= SLOT_REEL_STOP_FRAMES[reel]:
+                    self.slot_symbols[reel] = random.randrange(SLOT_SYMBOL_COUNT)
+                    changed = True
+
+        if self.slot_frame >= SLOT_SPIN_FRAMES:
+            self.slot_spinning = False
+            changed = True
+
+        if changed:
+            self.slot_emote = create_image_emote(
+                create_slot_bitmap(self.slot_symbols, self.slot_spinning),
+                "slots",
+            )
+
     def update(
         self,
         *,
@@ -837,6 +980,17 @@ class FaceEmoteController:
         """Zpracuje vstupy a posune vsechny aktivni emote o jeden krok."""
         # Nejdriv se poskladaji pozadavky na jednotlive regiony pro tuto iteraci.
         requests = self._create_requests()
+        normalized_menu_emote = (
+            str(active_menu_emote).strip().lower()
+            if active_menu_emote is not None
+            else None
+        )
+        if normalized_menu_emote == "slots":
+            self._update_slot_machine(proximity_value, boop_threshold)
+        else:
+            self.slot_boop_latched = False
+            self.slot_spinning = False
+
         menu_emote_active = self._apply_active_menu_emote(
             requests,
             active_menu_emote,

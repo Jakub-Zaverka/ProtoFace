@@ -291,6 +291,8 @@ Menu emote:
 - `Sad`
 - `Question`
 - `Clock`
+- `Name`
+- `Slots`
 - `Cross`
 - `Open eye`
 - `Sleep`
@@ -404,6 +406,11 @@ animaci `mouth_speak`; fullscreen emote zustava nadrazeny.
 - `Clock`
   - fullscreen hodiny vykreslene vlastnim 5x7 fontem se skalovanim `2x`
   - bitmapa hodin se cachuje a prekresli se jen pri zmene textu casu
+
+- `Slots`
+  - fullscreen automat se tremi valci a sesti jednoduchymi symboly
+  - boop senzor spusti kratke roztoceni a valce se postupne zastavi
+  - dalsi roztočení se spusti az novym boopem po oddaleni ruky
 
 - `Cross`
   - kriz v regionu oka
