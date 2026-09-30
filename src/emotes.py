@@ -6,7 +6,7 @@ import displayio
 import gifio
 import time
 
-# Jednoduchy 5x7 font pouzity pro fullscreen hodiny na RGB matici.
+# Jednoduchy 5x7 font pouzity pro fullscreen text na RGB matici.
 FONT_5X7 = {
     "0": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
     "1": ("00100", "01100", "00100", "00100", "00100", "00100", "01110"),
@@ -19,6 +19,14 @@ FONT_5X7 = {
     "8": ("01110", "10001", "10001", "01110", "10001", "10001", "01110"),
     "9": ("01110", "10001", "10001", "01111", "00001", "00001", "01110"),
     ":": ("00000", "00100", "00100", "00000", "00100", "00100", "00000"),
+    "Z": ("11111", "00001", "00010", "00100", "01000", "10000", "11111"),
+    "T": ("11111", "00100", "00100", "00100", "00100", "00100", "00100"),
+    "R": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
+    "A": ("01110", "10001", "10001", "11111", "10001", "10001", "10001"),
+    "C": ("01111", "10000", "10000", "10000", "10000", "10000", "01111"),
+    "E": ("11111", "10000", "10000", "11110", "10000", "10000", "11111"),
+    "N": ("10001", "11001", "10101", "10011", "10001", "10001", "10001"),
+    "Ý": ("00010", "00100", "10001", "01010", "00100", "00100", "00100"),
 }
 
 BLINKING_SLOWER = 25
@@ -443,6 +451,30 @@ def create_time_bitmap_from_text(text):
     return bitmap, palette
 
 
+def create_name_bitmap():
+    """Vykresli jmeno ZTRACENÝ doprostred cele 64x32 matice."""
+    bitmap = displayio.Bitmap(64, 32, 2)
+    palette = displayio.Palette(2)
+    palette[0] = 0x000000
+    palette[1] = 0xFFFFFF
+
+    text = "ZTRACENÝ"
+    scale = 1
+    char_width = 5
+    char_height = 7
+    spacing = 2
+    text_width = len(text) * char_width + (len(text) - 1) * spacing
+    start_x = (64 - text_width) // 2
+    start_y = (32 - char_height) // 2
+
+    x = start_x
+    for char in text:
+        _draw_char(bitmap, char, x, start_y, scale=scale, color=1)
+        x += char_width + spacing
+
+    return bitmap, palette
+
+
 def create_clock_emote(device_clock):
     """Vytvori fullscreen emote se zobrazenym aktualnim casem."""
     return {
@@ -502,6 +534,7 @@ class FaceEmoteController:
         self.mic_speak_hold = 0
         self.clock_emote = None
         self.clock_text = None
+        self.name_emote = create_image_emote(create_name_bitmap(), "name")
 
         # Zde jsou zaregistrovane vsechny assety, ktere controller umi pouzit.
         self.eye_idle_emote = create_image_emote("/faces/eye.bmp", "eye")
@@ -662,6 +695,11 @@ class FaceEmoteController:
         # Emote vybrany v menu ma prioritu pred automatickymi reakcemi senzoru.
         if active_menu_emote == "clock":
             requests["whole"]["source"] = self._get_clock_emote(device_clock)
+            requests["whole"]["duration"] = 1
+            return True
+
+        if active_menu_emote == "name":
+            requests["whole"]["source"] = self.name_emote
             requests["whole"]["duration"] = 1
             return True
 
