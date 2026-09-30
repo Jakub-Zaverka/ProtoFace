@@ -57,6 +57,8 @@ SETTING_ENV_KEYS = {
     "Wifi_Broadcast": "WIFI_BROADCAST_ON",
     "Verbose": "VERBOSE",
     "Mic": "MIC_ON",
+    "Smooth Speak": "SMOOTH_SPEAK_ON",
+    "Speak Override": "SPEAK_OVERRIDE_ON",
     "Display": "DISPLAY_ON"
 }
 SETTING_BITS = {
@@ -72,6 +74,8 @@ SETTING_BITS = {
     "WIFI_CONNECT_ON": 9,
     "WIFI_BROADCAST_ON": 10,
     "SMOOTH_TRANSITIONS_ON": 11,
+    "SMOOTH_SPEAK_ON": 12,
+    "SPEAK_OVERRIDE_ON": 13,
 }
 VALUE_SETTING_KEYS = (
     "BRIGHTNESS_INDEX",
@@ -278,6 +282,8 @@ WIFI_ON = WIFI_CONNECT_ON or WIFI_BROADCAST_ON
 VERBOSE = read_bool_setting("VERBOSE", False)
 BLINK_ON = read_bool_setting("BLINK_ON", True)
 SMOOTH_TRANSITIONS_ON = read_bool_setting("SMOOTH_TRANSITIONS_ON", False)
+SMOOTH_SPEAK_ON = read_bool_setting("SMOOTH_SPEAK_ON", False)
+SPEAK_OVERRIDE_ON = read_bool_setting("SPEAK_OVERRIDE_ON", False)
 DISPLAY_ON = read_bool_setting("DISPLAY_ON", True)
 BOOP_RAINBOW_ON = read_bool_setting("BOOP_RAINBOW_ON", True)
 RAINBOW_OVERRIDE_ON = read_bool_setting("RAINBOW_OVERRIDE_ON", False)
@@ -291,6 +297,8 @@ RUNTIME_SETTINGS.update({
     "VERBOSE": VERBOSE,
     "BLINK_ON": BLINK_ON,
     "SMOOTH_TRANSITIONS_ON": SMOOTH_TRANSITIONS_ON,
+    "SMOOTH_SPEAK_ON": SMOOTH_SPEAK_ON,
+    "SPEAK_OVERRIDE_ON": SPEAK_OVERRIDE_ON,
     "DISPLAY_ON": DISPLAY_ON,
     "BOOP_RAINBOW_ON": BOOP_RAINBOW_ON,
     "RAINBOW_OVERRIDE_ON": RAINBOW_OVERRIDE_ON,
@@ -640,6 +648,8 @@ def initialize_display_stack():
         }],
         blink_enabled=BLINK_ON,
         smooth_transitions_enabled=SMOOTH_TRANSITIONS_ON,
+        smooth_speak_enabled=SMOOTH_SPEAK_ON,
+        speak_override_enabled=SPEAK_OVERRIDE_ON,
         blink_time_set=BLINK_TIME_SET,
         emote_timer=EMOTE_TIMER,
         boop_timer=BOOP_TIMER,
@@ -713,6 +723,8 @@ def toggle_setting(setting_name):
     global mic
     global BLINK_ON
     global SMOOTH_TRANSITIONS_ON
+    global SMOOTH_SPEAK_ON
+    global SPEAK_OVERRIDE_ON
     global DISPLAY_ON
     global BOOP_RAINBOW_ON
     global RAINBOW_OVERRIDE_ON
@@ -769,6 +781,20 @@ def toggle_setting(setting_name):
         if face_emotes is not None:
             face_emotes.set_smooth_transitions_enabled(SMOOTH_TRANSITIONS_ON)
         persist_runtime_setting(setting_name, SMOOTH_TRANSITIONS_ON)
+        return setting_name
+
+    if setting_name == "Smooth Speak":
+        SMOOTH_SPEAK_ON = not SMOOTH_SPEAK_ON
+        if face_emotes is not None:
+            face_emotes.set_smooth_speak_enabled(SMOOTH_SPEAK_ON)
+        persist_runtime_setting(setting_name, SMOOTH_SPEAK_ON)
+        return setting_name
+
+    if setting_name == "Speak Override":
+        SPEAK_OVERRIDE_ON = not SPEAK_OVERRIDE_ON
+        if face_emotes is not None:
+            face_emotes.set_speak_override_enabled(SPEAK_OVERRIDE_ON)
+        persist_runtime_setting(setting_name, SPEAK_OVERRIDE_ON)
         return setting_name
 
     if setting_name == "Brightness":
@@ -854,6 +880,8 @@ def get_setting_values():
         "Rainbow Override": RAINBOW_OVERRIDE_ON,
         "Blink": BLINK_ON,
         "Smooth Transitions": SMOOTH_TRANSITIONS_ON,
+        "Smooth Speak": SMOOTH_SPEAK_ON,
+        "Speak Override": SPEAK_OVERRIDE_ON,
         "Brightness": display_module.get_brightness_scale(),
         "Font": get_oled_font_scale_label(),
         "Fan": FAN_SPEED_PERCENT,

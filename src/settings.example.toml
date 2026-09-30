@@ -11,6 +11,8 @@ DEVICE_HOSTNAME="protogen"
 
 ACCELEROMETER_ON = true
 MIC_ON = true
+SMOOTH_SPEAK_ON = false
+SPEAK_OVERRIDE_ON = false
 APDS_ON = true
 BOOP_RAINBOW_ON = true
 RAINBOW_OVERRIDE_ON = false

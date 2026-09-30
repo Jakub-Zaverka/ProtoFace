@@ -309,7 +309,10 @@ Menu nastaveni:
 - `Boop Rainbow`
 - `Rainbow Override`
 - `Mic`
+- `Smooth Speak`
+- `Speak Override`
 - `Blink`
+- `Smooth Transitions`
 - `Accelerometer`
 - `Wifi_Broadcast`
 - `Wifi_Connect`
@@ -395,6 +398,8 @@ Pokud neni aktivni menu emote:
 ### Emote z menu
 
 Pri otevrenem detailu emote ma menu prioritu nad automatickymi reakcemi.
+Volba `Speak Override` dovoli mikrofonu docasne nahradit pouze region ust
+animaci `mouth_speak`; fullscreen emote zustava nadrazeny.
 
 - `Clock`
   - fullscreen hodiny vykreslene vlastnim 5x7 fontem se skalovanim `2x`
@@ -438,7 +443,10 @@ aktivnich pixelu, prebytecne stare body zhasnou na miste a nove body se na miste
 rozsviti.
 
 Stejny mechanismus se pouziva pri navratu regionu do idle obliceje a na obou
-fyzickych panelech. GIF zdroje, pametove bitmapy jako hodiny a fullscreen
+fyzickych panelech. `Smooth Speak` ho zapina samostatne pouze pro prechod do
+`mouth_speak` a navrat z nej, takze globalni `Smooth Transitions` muze zustat
+vypnute.
+GIF zdroje, pametove bitmapy jako hodiny a fullscreen
 dynamicky obsah se nadale prepinaji okamzite. Sparovani probiha jednou pri
 zahajeni prechodu; na pomale desce muze vytvorit kratkou spicku v sekci
 `emote`, ale jednotlive mezisnimky uz jen prekresluji ridky seznam pixelu.
@@ -517,6 +525,8 @@ Pres UI lze za behu menit:
 - `Boop Rainbow`
 - `Rainbow Override`
 - `Mic`
+- `Smooth Speak`
+- `Speak Override`
 - `Blink`
 - `Smooth Transitions`
 - `Accelerometer`
@@ -768,7 +778,7 @@ README odpovida aktualnimu kodu v repozitari, vcetne:
 - ctyrtlacitkoveho ESP-NOW controlleru s `button4` jako `back`
 - menu nastaveni `Brightness` a `Fan`
 - NVM hlavicky `PFS4`
-- runtime nastaveni `BLINK_ON`, `DISPLAY_ON`, `BOOP_RAINBOW_ON`, `RAINBOW_OVERRIDE_ON`, `Brightness`, `Font` a `Fan`
+- runtime nastaveni `BLINK_ON`, `DISPLAY_ON`, `BOOP_RAINBOW_ON`, `RAINBOW_OVERRIDE_ON`, `SMOOTH_SPEAK_ON`, `SPEAK_OVERRIDE_ON`, `Brightness`, `Font` a `Fan`
 - performance mereni v `performance.py`
 - cache BMP assetu a rychle RGB565 cesty v `display.py`
 - adaptivni viceradkove OLED menu a deduplikace framebufferu v `UI.py`

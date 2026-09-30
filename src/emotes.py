@@ -470,6 +470,8 @@ class FaceEmoteController:
         boop_rainbow_enabled=True,
         rainbow_override_enabled=False,
         smooth_transitions_enabled=False,
+        smooth_speak_enabled=False,
+        speak_override_enabled=False,
         blink_emote_timer=None,
         verbose=False,
     ):
@@ -489,6 +491,8 @@ class FaceEmoteController:
         self.boop_rainbow_enabled = boop_rainbow_enabled
         self.rainbow_override_enabled = rainbow_override_enabled
         self.smooth_transitions_enabled = smooth_transitions_enabled
+        self.smooth_speak_enabled = smooth_speak_enabled
+        self.speak_override_enabled = speak_override_enabled
         self.blink_emote_timer = (
             blink_emote_timer
             if blink_emote_timer is not None
@@ -617,12 +621,23 @@ class FaceEmoteController:
         started = {}
         for regions in self.region_sets:
             for name in ("nose", "mouth", "eye", "whole"):
+                requested_source = requests[name]["source"]
+                smooth_speak = (
+                    name == "mouth"
+                    and self.smooth_speak_enabled
+                    and (
+                        _get_source_name(requested_source) == "speak"
+                        or get_emote_name(regions[name]) == "speak"
+                    )
+                )
                 _, region_started = update_emote(
                     self.display,
                     regions[name],
-                    source=requests[name]["source"],
+                    source=requested_source,
                     duration=requests[name]["duration"],
-                    smooth_transitions_enabled=self.smooth_transitions_enabled,
+                    smooth_transitions_enabled=(
+                        self.smooth_transitions_enabled or smooth_speak
+                    ),
                     verbose=self.verbose,
                 )
                 started[name] = started.get(name, False) or region_started
@@ -790,19 +805,12 @@ class FaceEmoteController:
             device_clock,
         )
 
-        if menu_emote_active:
-            # Pri aktivnim menu emote se preskoci automaticke reakce mikrofonu, boop a blikani.
-            started = self._update_region_sets(requests)
-            self._set_face_hidden(self.whole_region["active"])
-            self._sync_color_effect()
-            self.blink_time = 0
-            return started
-
         # Mikrofon meni jen region ust a jen pokud neni aktivni fullscreen vrstva.
         if (
             MIC_CONTROLS_MOUTH
-            and not menu_emote_active
+            and (not menu_emote_active or self.speak_override_enabled)
             and mic_value is not None
+            and requests["whole"]["source"] is None
             and not self.whole_region["active"]
         ):
             if mic_value >= MIC_SPEAK_THRESHOLD:
@@ -851,6 +859,8 @@ class FaceEmoteController:
         self._sync_color_effect()
 
         if any(started.values()) and get_emote_name(self.eye_region) != "blink":
+            self.blink_time = 0
+        elif menu_emote_active:
             self.blink_time = 0
 
         return started
@@ -912,6 +922,14 @@ class FaceEmoteController:
                         region,
                         region["current_source"],
                     )
+
+    def set_smooth_speak_enabled(self, enabled):
+        """Zapne samostatne morphovani pouze pro mikrofonni animaci pusy."""
+        self.smooth_speak_enabled = bool(enabled)
+
+    def set_speak_override_enabled(self, enabled):
+        """Povoli mikrofonni puse nahradit aktivni ne-fullscreen menu emote."""
+        self.speak_override_enabled = bool(enabled)
 
     def _sync_color_effect(self):
         """Synchronizuje globalni duhu a barevne override aktivnich emotes."""
