@@ -37,6 +37,9 @@ MIC_RELEASE_THRESHOLD = 3
 MIC_SPEAK_HOLD_FRAMES = 6
 MIC_CONTROLS_MOUTH = True
 PIXEL_TRANSITION_FRAMES = 3
+SPEAK_TRANSITION_STEPS = 6
+SPEAK_TRANSITION_SECONDS = 0.20
+MIC_SPEAK_HOLD_SECONDS = 0.20
 SLOT_SPIN_FRAMES = 28
 SLOT_REEL_STOP_FRAMES = (16, 22, 28)
 SLOT_SYMBOL_COUNT = 6
@@ -628,7 +631,7 @@ class FaceEmoteController:
             else max(1, blink_time_set // 6)
         )
         self.blink_time = 0
-        self.mic_speak_hold = 0
+        self.mic_speak_until = 0.0
         self.clock_emote = None
         self.clock_text = None
         self.name_emote = create_image_emote(create_name_bitmap(), "name")
@@ -715,6 +718,77 @@ class FaceEmoteController:
                 _get_source_content(self.mouth_idle_emote),
             )
 
+        # Prepare once: no nearest-neighbour search or interpolation while speaking.
+        self.speak_frames = self._prepare_speak_frames()
+        self.speak_level = 0.0
+        self.speak_last_time = time.monotonic()
+        self.speak_last_frame = 0
+        self.speak_managed = True
+
+    def _prepare_speak_frames(self):
+        matrix = self.mouth_matrix
+        width, height = matrix["width"], matrix["height"]
+        idle = _active_pixels(self.display.get_image_matrix_rgb565(
+            _get_source_content(self.mouth_idle_emote)), width, height)
+        speaking = _active_pixels(self.display.get_image_matrix_rgb565(
+            _get_source_content(self.mouth_speak_emote)), width, height)
+        moves = _build_transition_moves(idle, speaking)
+        frames = [idle]
+        for step in range(1, SPEAK_TRANSITION_STEPS):
+            pixels = []
+            for ox, oy, oc, nx, ny, nc in moves:
+                x = ox + ((nx - ox) * step + SPEAK_TRANSITION_STEPS // 2) // SPEAK_TRANSITION_STEPS
+                y = oy + ((ny - oy) * step + SPEAK_TRANSITION_STEPS // 2) // SPEAK_TRANSITION_STEPS
+                color = _rgb565_lerp(oc, nc, step, SPEAK_TRANSITION_STEPS)
+                pixels.append((x, y, color))
+            frames.append(pixels)
+        # Exact endpoints avoid losing pixels through intermediate collisions.
+        frames.append(speaking)
+        return frames
+
+    def _update_shared_speak(self, request, now):
+        source = request["source"]
+        if source is not None and source is not self.mouth_speak_emote:
+            self.speak_managed = False
+            return False
+        region = self.mouth_region
+        current = region["current_source"]
+        if not self.speak_managed and current not in (None, self.mouth_speak_emote):
+            return False
+        smooth = self.smooth_speak_enabled or self.smooth_transitions_enabled
+        if not self.speak_managed:
+            self.speak_level = 1.0 if region["active"] else 0.0
+            self.speak_last_frame = -1
+            self.speak_last_time = now
+            self.speak_managed = True
+        target = 1.0 if source is self.mouth_speak_emote else 0.0
+        elapsed = max(0.0, now - self.speak_last_time)
+        self.speak_last_time = now
+        if smooth:
+            delta = elapsed / SPEAK_TRANSITION_SECONDS
+            if target > self.speak_level:
+                self.speak_level = min(target, self.speak_level + delta)
+            else:
+                self.speak_level = max(target, self.speak_level - delta)
+        else:
+            self.speak_level = target
+        frame = int(self.speak_level * SPEAK_TRANSITION_STEPS + 0.5)
+        started = source is self.mouth_speak_emote and current is not source
+        for regions in self.region_sets:
+            mouth = regions["mouth"]
+            # Cancel any generic transition left by another mouth expression.
+            mouth["transition_moves"] = None
+            mouth["transition_to_idle"] = False
+            mouth["active"] = bool(target or self.speak_level > 0)
+            mouth["current_source"] = self.mouth_speak_emote if mouth["active"] else None
+            mouth["elapsed"] = 0
+            mouth["duration"] = request["duration"]
+            self.display.set_matrix_hidden(mouth["matrix"], False)
+            if frame != self.speak_last_frame:
+                self.display.draw_sparse_rgb565(mouth["matrix"], self.speak_frames[frame])
+        self.speak_last_frame = frame
+        return started
+
     def _create_face_regions(
         self,
         suffix,
@@ -757,8 +831,22 @@ class FaceEmoteController:
     def _update_region_sets(self, requests):
         """Aplikuje stejne pozadavky na vsechny fyzicke sady regionu."""
         started = {}
+        mouth_source = requests["mouth"]["source"]
+        shared_mouth = (
+            mouth_source is None or mouth_source is self.mouth_speak_emote
+        ) and (
+            self.speak_managed
+            or self.mouth_region["current_source"] is None
+            or self.mouth_region["current_source"] is self.mouth_speak_emote
+        ) and self.mouth_region["transition_moves"] is None
+        if shared_mouth:
+            started["mouth"] = self._update_shared_speak(requests["mouth"], time.monotonic())
+        else:
+            self.speak_managed = False
         for regions in self.region_sets:
             for name in ("nose", "mouth", "eye", "whole"):
+                if name == "mouth" and shared_mouth:
+                    continue
                 requested_source = requests[name]["source"]
                 smooth_speak = (
                     name == "mouth"
@@ -1005,12 +1093,13 @@ class FaceEmoteController:
             and requests["whole"]["source"] is None
             and not self.whole_region["active"]
         ):
+            now = time.monotonic()
             if mic_value >= MIC_SPEAK_THRESHOLD:
-                self.mic_speak_hold = MIC_SPEAK_HOLD_FRAMES
-            elif mic_value <= MIC_RELEASE_THRESHOLD and self.mic_speak_hold > 0:
-                self.mic_speak_hold -= 1
+                self.mic_speak_until = now + MIC_SPEAK_HOLD_SECONDS
+            elif mic_value > MIC_RELEASE_THRESHOLD and now < self.mic_speak_until:
+                self.mic_speak_until = now + MIC_SPEAK_HOLD_SECONDS
 
-            if self.mic_speak_hold > 0:
+            if now < self.mic_speak_until:
                 requests["mouth"]["source"] = self.mouth_speak_emote
                 requests["mouth"]["duration"] = MIC_SPEAK_HOLD_FRAMES
                 if self.verbose:

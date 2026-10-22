@@ -791,3 +791,27 @@ README odpovida aktualnimu kodu v repozitari, vcetne:
 - adaptivni viceradkove OLED menu a deduplikace framebufferu v `UI.py`
 - trikrokove pixelove prechody statickych BMP emotes v `emotes.py`
 - zpomaleneho blink intervalu pres `BLINK_TIME_SET = 100`
+
+
+### Smooth Speak: sdilene predpocitane prehravani
+
+Prechody `mouth.bmp <-> mouth_speak.bmp` se pripravi jednou pri vytvoreni
+`FaceEmoteController` (vcetne parovani pixelu). Za behu se uz jen vybere
+predpocitany snimek pro obe strany; zrcadleni a barevne efekty zustavaji
+v renderovaci vrstve. Priprava muze prodlouzit start a spotrebuje dalsi RAM.
+Zmena jasu znovu vytvari display stack, tedy i tyto snimky.
+
+- `SPEAK_TRANSITION_STEPS = 6`: pocet intervalu mezi zavrenou a otevrenou pusou.
+- `SPEAK_TRANSITION_SECONDS = 0.20`: cas celeho otevreni nebo zavreni.
+- `MIC_SPEAK_HOLD_SECONDS = 0.20`: casove podrzeni po hlasitem vstupu;
+  prahy mikrofonu zustavaji 5 pro aktivaci a 3 pro uvolneni.
+
+Prubeh ridi `time.monotonic()`. Zmena smeru navazuje na aktualni otevreni.
+Pri pomale smycce se zastarale mezisnimky preskoci; pokud se index snimku
+nezmenil, bitmapy se znovu nekopiruji. Bez Smooth Speak i Smooth Transitions
+se pusa prepina okamzite. Ostatni vyrazy pusy pouzivaji puvodni obsluhu;
+jejich rozbehnuty morph se pred navratem ke sdilenemu prehravani dokonci.
+Tato optimalizace nemeni obecne morphy oci ani prehravani GIFu.
+
+Host testy: `python -m unittest discover -s tests -p test_smooth_speak.py`.
+Plynulost, barevne efekty a celkove casy je treba overit na MatrixPortal S3.
