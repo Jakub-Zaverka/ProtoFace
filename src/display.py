@@ -650,6 +650,10 @@ class Display:
                     self._set_base_pixel(matrix_group, x, y, pixel_value)
         self.mark_dirty()
 
+    def load_transition(self, first, second, width, height):
+        from precomputed import load_frames
+        return load_frames(self, first, second, width, height)
+
     def load_bmp_into_matrix(self, matrix_group, source):
         """Nahraje BMP nebo pametovou bitmapu a premaluje ji do RGB565 bitmapy."""
         matrix = self.get_image_matrix_rgb565(source)

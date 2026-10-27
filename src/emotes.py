@@ -184,36 +184,35 @@ def _start_image_transition(display, region, source, to_idle=False):
         return False
 
     matrix_group = region["matrix"]
-    new_matrix = display.get_image_matrix_rgb565(content)
-    old_pixels = display.get_active_pixels_rgb565(matrix_group)
-    new_pixels = _active_pixels(new_matrix, matrix_group["width"], matrix_group["height"])
-
-    region["transition_moves"] = _build_transition_moves(old_pixels, new_pixels)
-    region["transition_frame"] = 0
+    previous = region["current_source"] or region["idle_source"]
+    first = _get_source_content(previous) if previous is not None else None
+    if not isinstance(first, str) or first == content:
+        return False
+    frames = display.load_transition(first, content, matrix_group["width"], matrix_group["height"])
+    if frames is None:
+        return False
+    now = getattr(display, "transition_now", time.monotonic())
+    region["transition_moves"] = {"frames": frames, "start": now}
+    region["transition_frame"] = -1
     region["transition_to_idle"] = to_idle
     display.set_matrix_hidden(matrix_group, False)
     return True
 
 
 def _tick_image_transition(display, region):
-    """Posune vsechny sparovane pixely o jeden krok k jejich cili."""
-    moves = region["transition_moves"]
-    if moves is None:
+    """Select a precomputed frame by elapsed time, without runtime pairing."""
+    transition = region["transition_moves"]
+    if transition is None:
         return False
-
-    region["transition_frame"] += 1
-    step = region["transition_frame"]
-    pixels = []
-    for old_x, old_y, old_color, new_x, new_y, new_color in moves:
-        x = old_x + ((new_x - old_x) * step + PIXEL_TRANSITION_FRAMES // 2) // PIXEL_TRANSITION_FRAMES
-        y = old_y + ((new_y - old_y) * step + PIXEL_TRANSITION_FRAMES // 2) // PIXEL_TRANSITION_FRAMES
-        color = _rgb565_lerp(old_color, new_color, step, PIXEL_TRANSITION_FRAMES)
-        pixels.append((x, y, color))
-
-    display.draw_sparse_rgb565(region["matrix"], pixels)
-    if step < PIXEL_TRANSITION_FRAMES:
+    frames = transition["frames"]
+    now = getattr(display, "transition_now", time.monotonic())
+    progress = min(1.0, max(0.0, (now - transition["start"]) / SPEAK_TRANSITION_SECONDS))
+    step = min(len(frames) - 1, int(progress * (len(frames) - 1)))
+    if step != region["transition_frame"]:
+        display.draw_sparse_rgb565(region["matrix"], frames[step])
+        region["transition_frame"] = step
+    if progress < 1.0:
         return True
-
     region["transition_moves"] = None
     region["transition_frame"] = 0
     return False
@@ -718,7 +717,7 @@ class FaceEmoteController:
                 _get_source_content(self.mouth_idle_emote),
             )
 
-        # Prepare once: no nearest-neighbour search or interpolation while speaking.
+        # Load PC-generated frames once; no pairing on the microcontroller.
         self.speak_frames = self._prepare_speak_frames()
         self.speak_level = 0.0
         self.speak_last_time = time.monotonic()
@@ -727,23 +726,12 @@ class FaceEmoteController:
 
     def _prepare_speak_frames(self):
         matrix = self.mouth_matrix
-        width, height = matrix["width"], matrix["height"]
-        idle = _active_pixels(self.display.get_image_matrix_rgb565(
-            _get_source_content(self.mouth_idle_emote)), width, height)
-        speaking = _active_pixels(self.display.get_image_matrix_rgb565(
-            _get_source_content(self.mouth_speak_emote)), width, height)
-        moves = _build_transition_moves(idle, speaking)
-        frames = [idle]
-        for step in range(1, SPEAK_TRANSITION_STEPS):
-            pixels = []
-            for ox, oy, oc, nx, ny, nc in moves:
-                x = ox + ((nx - ox) * step + SPEAK_TRANSITION_STEPS // 2) // SPEAK_TRANSITION_STEPS
-                y = oy + ((ny - oy) * step + SPEAK_TRANSITION_STEPS // 2) // SPEAK_TRANSITION_STEPS
-                color = _rgb565_lerp(oc, nc, step, SPEAK_TRANSITION_STEPS)
-                pixels.append((x, y, color))
-            frames.append(pixels)
-        # Exact endpoints avoid losing pixels through intermediate collisions.
-        frames.append(speaking)
+        frames = self.display.load_transition(
+            _get_source_content(self.mouth_idle_emote),
+            _get_source_content(self.mouth_speak_emote),
+            matrix["width"], matrix["height"])
+        if frames is None:
+            raise RuntimeError("Missing transitions: run tools/generate_transitions.py and deploy src/transitions")
         return frames
 
     def _update_shared_speak(self, request, now):
@@ -830,6 +818,7 @@ class FaceEmoteController:
 
     def _update_region_sets(self, requests):
         """Aplikuje stejne pozadavky na vsechny fyzicke sady regionu."""
+        self.display.transition_now = time.monotonic()
         started = {}
         mouth_source = requests["mouth"]["source"]
         shared_mouth = (

@@ -27,6 +27,9 @@ class Display:
         self.draws = []
         self.images = {"idle.bmp": [[1, 0, 0]], "speak.bmp": [[0, 0, 1]]}
 
+    def load_transition(self, first, second, width, height):
+        return [[(0, 0, 1)]] + [[(1, 0, 1)] for _ in range(5)] + [[(2, 0, 1)]]
+
     def get_image_matrix_rgb565(self, path):
         return self.images[path]
 
