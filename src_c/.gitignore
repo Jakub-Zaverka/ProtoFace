@@ -1,0 +1,4 @@
+.pio/
+data/settings.toml
+data/runtime.pfs
+test/bin/
