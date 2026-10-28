@@ -73,10 +73,20 @@ inline constexpr const char* EmoteItems[] = {"Hearth","Narrow","Sad","Question",
 inline constexpr const char* SettingItems[] = {"Display","Brightness","Font","Fan",
   "Boop","Boop Calibrate","Boop Rainbow","Rainbow Override","Mic",
   "Smooth Speak","Speak Override","Blink","Smooth Transitions","Accelerometer",
-  "Wifi_Broadcast","Wifi_Connect","Verbose","Back"};
+  "Wifi_Broadcast","Wifi_Connect","Verbose","HW Reset","Back"};
+constexpr int HwResetSetting=17;
+constexpr int SettingCount=sizeof(SettingItems)/sizeof(SettingItems[0]);
+constexpr int BackSetting=SettingCount-1;
 inline constexpr int SettingFlags[] = {Display,-1,-1,-1,Boop,-1,BoopRainbow,
   RainbowOverride,Mic,SmoothSpeak,SpeakOverride,Blink,SmoothTransitions,Accel,
-  WifiBroadcast,WifiConnect,Verbose,-1};
+  WifiBroadcast,WifiConnect,Verbose,-1,-1};
+static_assert(sizeof(SettingFlags)/sizeof(SettingFlags[0])==SettingCount,"Setting metadata must match menu");
+struct RestartRequest {
+  bool pending=false;
+  uint32_t requestedAt=0;
+  void request(uint32_t now){if(!pending){pending=true;requestedAt=now;}}
+  bool due(uint32_t now)const{return pending&&uint32_t(now-requestedAt)>=300;}
+};
 struct Menu {
   Screen screen=Screen::Main;
   std::array<int,3> selected{{0,0,0}}, scroll{{0,0,0}};

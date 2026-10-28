@@ -243,6 +243,16 @@ profil (`connect_enabled=true`, `station_connected=true`, `profile=main`)
 a HTTP preslo na IP domaci site. Vypadek routeru a navrat do dosahu zatim
 nebyly fyzicky zkousene; limit dvou pokusu a reset pocitadla maji host test.
 
+## Restart desky z menu
+
+**Settings -> HW Reset -> OK** restartuje ESP32-S3 pres `ESP.restart()`.
+Polozka je take dostupna pres stejne webove ovladani menu a z ESP-NOW controlleru.
+Je to jednorazova akce oznacena `RUN`; nema persistentni bit a nemeni ulozene
+nastaveni, credentials ani filesystem. Restart nastane po 300 ms z logic task,
+az po navratu z HTTP handleru, aby se stihla odeslat odpoved. Opakovany stisk
+neposouva naplanovany restart. Po restartu se znovu inicializuji obe ulohy
+a periferie. Jde o restart mikrokontroleru, nikoliv odpojeni napajeni cele masky.
+
 ## Dve jadra a predavani stavu
 
 Pouziva se primo oficialni ESP-IDF FreeRTOS
@@ -316,10 +326,11 @@ Host overeni **27. 10. 2026**:
 
 - sestaveni firmware pro skutecny ESP32-S3 target;
 - sestaveni LittleFS obrazu s puvodnimi 18 BMP, 51 MPH a webem;
-- devet skupin C++ testu: verze/perzistence, ESP-NOW a menu, boop tracker,
+- deset skupin C++ testu: verze/perzistence, ESP-NOW a menu, boop tracker,
   priority emotes/mic/Slots/blink, barvy/casovani, navraty regionu pres morph,
   snapshoty/stari vstupu/tick, nezavisla interpolace bez posouvani citacu
-  a limit dvou Wi-Fi pokusu s resetem pocitadla;
+  limit dvou Wi-Fi pokusu s resetem pocitadla a akce/odlozeni HW Reset
+  vcetne preteceni millis;
 - kontrola vsech MPH1 hlavicek, poctu snimku a souradnic;
 - SHA-256 shoda assetu s aktualni Python referenci.
 

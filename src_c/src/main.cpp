@@ -38,6 +38,7 @@ int pendingNetwork=-1;
 std::vector<String> debug;
 std::deque<String> logs;
 String lastAnimationError;
+RestartRequest restartRequest;
 
 AnimationInput animationInput(){
   AnimationInput input;
@@ -162,7 +163,12 @@ void pollNetwork(){
   }
 }
 void setSetting(int index){
-  if(index<0)return;
+  if(index<0||index>=BackSetting)return;
+  if(index==HwResetSetting){
+    restartRequest.request(millis());
+    log("HW Reset requested; restarting in 300 ms");
+    return;
+  }
   if(index==1){settings.brightness=(settings.brightness+1)%5;++displayRevision;}
   else if(index==2){settings.font=(settings.font+1)%3;oled.font(settings.font);}
   else if(index==3){settings.fan=(settings.fan+1)%3;applyFan();}
@@ -261,6 +267,8 @@ void initializeLogic(){
   log("Logic pinned to core 0; animation pinned to core 1");
 }
 void logicStep(){
+  // Run after the previous HTTP handler returned so its reply can leave first.
+  if(restartRequest.due(millis())){ESP.restart();return;}
   uint32_t now=millis();perf.begin(micros());
   if(animation.status(animationStatus)){
     String error=animationStatus.error;

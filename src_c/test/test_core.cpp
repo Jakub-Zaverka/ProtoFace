@@ -148,4 +148,14 @@ void stationAttemptsTests(){
   assert(!attempts.start()&&attempts.count==2);
   attempts.reset();assert(attempts.start()&&attempts.count==1);
 }
-int main(){settingsTests();inputTests();boopTests();faceTests();graphicsMathTests();regionTransitionTests();snapshotTests();independentAnimationTests();stationAttemptsTests();std::cout<<"9 C++ test groups passed\n";}
+void restartTests(){
+  Menu menu;menu.screen=Screen::Settings;menu.selected[2]=HwResetSetting;
+  assert(menu.action(Action::Ok)==HwResetSetting&&menu.screen==Screen::Settings);
+  menu.selected[2]=BackSetting;assert(menu.action(Action::Ok)==-1&&menu.screen==Screen::Main);
+  RestartRequest restart;assert(!restart.due(1000));
+  restart.request(100);assert(!restart.due(399)&&restart.due(400));
+  restart.request(390);assert(restart.due(400)); // repeated click doesn't postpone
+  restart=RestartRequest{};restart.request(0xfffffff0u);
+  assert(!restart.due(20)&&restart.due(284));
+}
+int main(){settingsTests();inputTests();boopTests();faceTests();graphicsMathTests();regionTransitionTests();snapshotTests();independentAnimationTests();stationAttemptsTests();restartTests();std::cout<<"10 C++ test groups passed\n";}

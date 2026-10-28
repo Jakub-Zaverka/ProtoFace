@@ -129,7 +129,7 @@ String Oled::settingText(int i,const Settings& s)const{
   if(i==1)return String(Brightness[s.brightness],1);
   if(i==2){static const char* labels[]={"1.5x","2x","2.5x"};return labels[s.font];}
   if(i==3)return String(FanPercent[s.fan])+"%";
-  if(i==5)return "RUN";
+  if(i==5||i==HwResetSetting)return "RUN";
   return SettingFlags[i]>=0?(s.get(Flag(SettingFlags[i]))?"ON":"OFF"):"";
 }
 void Oled::render(Menu& menu,const Settings& settings,const String& clock,const std::vector<String>& debug){
@@ -143,7 +143,7 @@ void Oled::render(Menu& menu,const Settings& settings,const String& clock,const 
   if(l>=0){
     int cols=std::max(1,128/cw),budget=visibleRows();std::vector<String> labels;std::vector<int> rows;
     for(int i=0;i<menu.count();i++){
-      String value=menu.item(i);if(l==2&&i!=17)value+=": "+settingText(i,settings);
+      String value=menu.item(i);if(l==2&&i!=BackSetting)value+=": "+settingText(i,settings);
       labels.push_back(value);rows.push_back((value.length()+2+cols-1)/cols);
     }
     int& scroll=menu.scroll[l];scroll=std::min(std::max(0,scroll),menu.count()-1);
@@ -179,9 +179,9 @@ void Oled::snapshot(JsonDocument& doc,Menu& menu,const Settings& s,const String&
     if(menu.selected[l]<scroll)scroll=menu.selected[l];if(menu.selected[l]>=scroll+rows)scroll=menu.selected[l]-rows+1;
     doc["selected_index"]=menu.selected[l];
     for(int i=scroll;i<std::min(n,scroll+rows);i++){JsonObject e=items.add<JsonObject>();e["index"]=i;e["label"]=menu.item(i);e["selected"]=i==menu.selected[l];
-      if(l==2&&i!=17){int f=SettingFlags[i];if(f>=0)e["value"]=s.get(Flag(f));
+      if(l==2&&i!=BackSetting){int f=SettingFlags[i];if(f>=0)e["value"]=s.get(Flag(f));
         else if(i==1)e["value"]=Brightness[s.brightness];else if(i==3)e["value"]=FanPercent[s.fan];
-        else if(i==5)e["value"]=true;else e["value"]=settingText(i,s);
+        else if(i==5||i==HwResetSetting)e["value"]=true;else e["value"]=settingText(i,s);
         e["display_value"]=settingText(i,s);}}
   }else{doc["selected_index"]=nullptr;
     if(menu.screen==Screen::Detail){auto e=items.add<JsonObject>();e["index"]=0;e["label"]=EmoteItems[menu.emote];e["selected"]=true;}

@@ -40,7 +40,7 @@ bool decode(const uint8_t* d,size_t n,Input& out) {
   out.up=d[4];out.down=d[5];out.ok=d[6];out.back=n==8&&d[7];return true;
 }
 int Menu::list()const{return screen==Screen::Main?0:screen==Screen::Emotes?1:screen==Screen::Settings?2:-1;}
-int Menu::count()const{int l=list();return l==0?3:l==1?16:l==2?18:0;}
+int Menu::count()const{int l=list();return l==0?3:l==1?16:l==2?SettingCount:0;}
 const char* Menu::item(int i)const{int l=list();return l==0?MainItems[i]:l==1?EmoteItems[i]:SettingItems[i];}
 const char* Menu::screenName()const{
   static const char* names[]={"main_menu","main_screen","emotes_menu","emote_detail","settings_menu","debug_menu"};
@@ -56,7 +56,7 @@ int Menu::action(Action a) {
   if(a!=Action::Ok)return -1;
   if(l==0){screen=i==0?Screen::Emotes:i==1?Screen::Settings:Screen::Debug;}
   else if(l==1){if(i==15)screen=Screen::Main;else{emote=i;screen=Screen::Detail;}}
-  else if(i==17)screen=Screen::Main;
+  else if(i==BackSetting)screen=Screen::Main;
   else return i;
   return -1;
 }
