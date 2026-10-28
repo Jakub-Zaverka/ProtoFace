@@ -104,7 +104,15 @@ Sample Sensors::read(const Settings& s,uint32_t now){
   }
   return out;
 }
-bool Oled::begin(bool enabled){present=enabled&&ack(0x3c)&&display.begin(SSD1306_SWITCHCAPVCC,0x3c,false,false);return present;}
+bool Oled::begin(bool enabled){
+  present=enabled&&ack(0x3c)&&display.begin(SSD1306_SWITCHCAPVCC,0x3c,false,false);
+  if(present){
+    // Match the physical mounting and explicit 0xA0/0xC0 in Python I2C_sim.py.
+    display.ssd1306_command(SSD1306_SEGREMAP);
+    display.ssd1306_command(SSD1306_COMSCANINC);
+  }
+  return present;
+}
 void Oled::font(uint8_t i){static const int num[]={3,2,5},den[]={2,1,2};scaleNum=num[i%3];scaleDen=den[i%3];}
 void Oled::text(const String& value,int x,int y,int maxWidth){
   int ox=x;for(size_t i=0;i<value.length();i++){

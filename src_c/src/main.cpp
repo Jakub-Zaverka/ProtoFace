@@ -28,10 +28,12 @@ Sample samples;
 WebServer web(80);
 QueueHandle_t controlQueue=nullptr;
 bool fsReady=false,httpRunning=false,espReady=false;
+bool fanPwmReady=false;
 bool previousButtons[3]{};
 uint32_t lastDebug=0,connectAt=0,sampledAt=0;
 uint32_t displayRevision=0,transitionResetRevision=0;
 bool stationPending=false,backupAttempt=false;
+StationAttempts stationAttempts;
 int pendingNetwork=-1;
 std::vector<String> debug;
 std::deque<String> logs;
@@ -50,6 +52,16 @@ void addTaskMetrics(JsonDocument& doc){
   // Both this JSON document and the received status copy belong to logic only.
   doc["logic_core"]=xPortGetCoreID();
   doc["logic_stack_free_bytes"]=uxTaskGetStackHighWaterMark(nullptr);
+  doc["fan_pwm_ready"]=fanPwmReady;
+  doc["fan_percent"]=FanPercent[settings.fan];
+  JsonObject network=doc["wifi"].to<JsonObject>();
+  network["connect_enabled"]=settings.get(WifiConnect);
+  network["station_connected"]=WiFi.status()==WL_CONNECTED;
+  network["connecting"]=stationPending;
+  network["attempt"]=stationAttempts.count;
+  network["max_attempts"]=StationAttempts::Limit;
+  network["profile"]=settings.get(WifiConnect)?(backupAttempt?"backup":"main"):"";
+  network["ip"]=WiFi.status()==WL_CONNECTED?WiFi.localIP().toString():String("");
   JsonObject a=doc["animation"].to<JsonObject>();
   a["core"]=animationStatus.core;a["ready"]=animationStatus.ready;
   a["frames"]=animationStatus.frames;a["logical_ticks"]=animationStatus.logicalTicks;
@@ -63,9 +75,9 @@ void addTaskMetrics(JsonDocument& doc){
 
 void log(const String& message){Serial.println(message);logs.push_back(message);if(logs.size()>100)logs.pop_front();}
 void applyFan(){
-  // At 25 kHz LEDC cannot provide 16 physical bits. Map logical percentages
-  // to 11 bits, rather than requesting an invalid timer configuration.
-  uint32_t duty=uint32_t((uint64_t(FanPercent[settings.fan])*2047+50)/100);
+  if(!fanPwmReady)return;
+  // Arduino selects the 40 MHz XTAL clock on S3: 25 kHz permits 10 bits.
+  uint32_t duty=fanDuty(FanPercent[settings.fan]);
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
   ledcWrite(A1,duty);
 #else
@@ -94,20 +106,34 @@ void fallback(){
   if(!WiFi.softAP(ssid.c_str(),nullptr,1,false,1))log("Fallback AP failed");
   esp_wifi_set_channel(1,WIFI_SECOND_CHAN_NONE);
 }
+void requestBroadcast(){
+  stationPending=false;
+  // Reuse the regular AP transition, outside HTTP handlers, including NVS save.
+  pendingNetwork=2;
+  log("Wi-Fi connection unavailable; switching to Wifi_Broadcast");
+}
 void beginStation(bool backup){
   backupAttempt=backup;
   String ssid=config.get(backup?"BACKUP_WIFI_SSID":"HOME_WIFI_SSID");
   String password=config.get(backup?"BACKUP_WIFI_PASSWORD":"HOME_WIFI_PASSWORD");
   if(ssid.isEmpty()){
-    if(!backup){beginStation(true);return;}
-    stationPending=false;settings.set(WifiConnect,false);settings.deriveWifi();fallback();config.save(settings);return;
+    // Empty profiles are not attempts. With one configured profile, try it twice.
+    backupAttempt=!backup;
+    ssid=config.get(backupAttempt?"BACKUP_WIFI_SSID":"HOME_WIFI_SSID");
+    password=config.get(backupAttempt?"BACKUP_WIFI_PASSWORD":"HOME_WIFI_PASSWORD");
+    if(ssid.isEmpty()){requestBroadcast();return;}
   }
+  if(!stationAttempts.start()){requestBroadcast();return;}
+  WiFi.softAPdisconnect(false);
   WiFi.begin(ssid.c_str(),password.c_str());connectAt=millis();stationPending=true;
-  log("Connecting to "+ssid);
+  log(String("Wi-Fi attempt ")+stationAttempts.count+"/2: "+ssid);
 }
 // Must run outside an active WebServer handler, including network toggle requests.
 void changeNetwork(int mode,bool persist){
-  stopHttp();stationPending=false;WiFi.disconnect(false,false);WiFi.softAPdisconnect(false);
+  stopHttp();stationPending=false;
+  if(mode==1)stationAttempts.reset();
+  WiFi.setAutoReconnect(false);WiFi.persistent(false);
+  WiFi.disconnect(false,false);WiFi.softAPdisconnect(false);
   WiFi.mode(WIFI_AP_STA);WiFi.setHostname(config.get("DEVICE_HOSTNAME","protogen").c_str());
   settings.set(WifiConnect,mode==1);settings.set(WifiBroadcast,mode==2);settings.deriveWifi();
   if(mode==2){
@@ -122,17 +148,17 @@ void changeNetwork(int mode,bool persist){
 void pollNetwork(){
   if(pendingNetwork>=0){int mode=pendingNetwork;pendingNetwork=-1;changeNetwork(mode,true);}
   if(stationPending){
-    if(WiFi.status()==WL_CONNECTED){stationPending=false;settings.deriveWifi();startHttp(true);
+    if(WiFi.status()==WL_CONNECTED){stationPending=false;stationAttempts.reset();startHttp(true);
       // ESP32 keeps system time in local wall-clock convention for compatibility
       // with /api/time. Server offset is applied by libc TZ, not by the browser.
-      configTime(2*3600,0,"tak.cesnet.cz");config.save(settings);
-    }else if(uint32_t(millis()-connectAt)>=10000){
+      configTime(2*3600,0,"tak.cesnet.cz");
+    }else if(uint32_t(millis()-connectAt)>=WifiAttemptMs){
       WiFi.disconnect(false,false);
-      if(!backupAttempt)beginStation(true);
-      else{stationPending=false;settings.set(WifiConnect,false);settings.deriveWifi();fallback();config.save(settings);log("Wi-Fi profiles unavailable");}
+      if(stationAttempts.exhausted())requestBroadcast();
+      else beginStation(!backupAttempt);
     }
   }else if(settings.get(WifiConnect)&&WiFi.status()!=WL_CONNECTED){
-    stopHttp();beginStation(false);
+    stopHttp();WiFi.disconnect(false,false);beginStation(false);
   }
 }
 void setSetting(int index){
@@ -199,14 +225,25 @@ void initializeLogic(){
   Wire.begin(SDA,SCL);Wire.setClock(400000);Wire.setTimeOut(25);
   setenv("TZ","UTC0",1);tzset();
   // Do not format on a mount failure: an absent image must be visible to the user.
-  fsReady=LittleFS.begin(false);if(!fsReady)log("LittleFS mount failed: upload filesystem image");
+  // Match the partition NAME in partitions.csv. Arduino's default is "spiffs",
+  // which does not exist in this project even though the subtype is spiffs.
+  fsReady=LittleFS.begin(false,"/littlefs",10,"littlefs");
+  if(!fsReady)log("LittleFS partition 'littlefs' mount failed: upload filesystem image");
+  else{
+    File required=LittleFS.open("/transitions/mouth--mouth_speak.mph","r");
+    log(String("LittleFS mounted: ")+LittleFS.usedBytes()+"/"+LittleFS.totalBytes()+
+        " bytes; mouth transition: "+(required?String(required.size())+" bytes":"MISSING"));
+  }
   config.load(settings);
   pinMode(PIN_BUTTON_UP,INPUT_PULLUP);pinMode(PIN_BUTTON_DOWN,INPUT_PULLUP);pinMode(A4,INPUT_PULLUP);
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-  ledcAttach(A1,25000,11);
+  fanPwmReady=ledcAttach(A1,FanPwmHz,FanPwmBits);
 #else
-  ledcSetup(0,25000,11);ledcAttachPin(A1,0);
+  fanPwmReady=ledcSetup(0,FanPwmHz,FanPwmBits)>0;
+  if(fanPwmReady)ledcAttachPin(A1,0);
 #endif
+  if(!fanPwmReady)log("Fan PWM initialization failed on A1/GPIO3");
+  else log(String("Fan PWM ready: A1/GPIO3, 25000 Hz, 10 bit, requested ")+FanPercent[settings.fan]+"%");
   applyFan();
   if(!oled.begin(settings.oled))log("OLED unavailable: reference UI is disabled");
   oled.font(settings.font);

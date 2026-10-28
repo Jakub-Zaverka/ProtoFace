@@ -9,6 +9,14 @@ namespace proto {
 // Original Python loop measured about 50 ms. Use one logical tick per 50 ms
 // (without catch-up bursts) for counter-based blink/boop/slots/motion.
 constexpr uint32_t TickMs = 50;
+constexpr uint32_t WifiAttemptMs=10000;
+struct StationAttempts {
+  static constexpr uint8_t Limit=2;
+  uint8_t count=0;
+  void reset(){count=0;}
+  bool exhausted()const{return count>=Limit;}
+  bool start(){if(exhausted())return false;++count;return true;}
+};
 inline bool before(uint32_t now, uint32_t deadline) {
   return static_cast<int32_t>(now - deadline) < 0;
 }
@@ -32,6 +40,14 @@ struct Settings {
 };
 inline constexpr float Brightness[] = {.3f,.4f,.5f,.7f,1.f};
 inline constexpr int FanPercent[] = {0,50,100};
+constexpr uint32_t FanPwmHz=25000;
+constexpr uint8_t FanPwmBits=10;
+constexpr uint32_t FanDutyMax=(1u<<FanPwmBits)-1;
+static_assert(FanPwmHz*(1u<<FanPwmBits)<=40000000u,"PWM must fit the S3 40 MHz XTAL clock");
+inline uint32_t fanDuty(int percent){
+  percent=percent<0?0:percent>100?100:percent;
+  return (uint32_t(percent)*FanDutyMax+50)/100;
+}
 struct Sample {
   bool micValid=false, proxValid=false, motionValid=false;
   float mic=0, dx=0, dy=0, dz=0;

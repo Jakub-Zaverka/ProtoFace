@@ -78,6 +78,8 @@ void faceTests(){
   v.mic=0;f.update(s,-1,v,225,30,1);assert(f.regions[2].active);
 }
 void graphicsMathTests(){
+  assert(fanDuty(0)==0&&fanDuty(50)==512&&fanDuty(100)==1023);
+  assert(fanDuty(-1)==0&&fanDuty(101)==1023);
   assert(panelColor(255,0,0,1)==0xf800);
   assert(panelColor(0,255,0,1)==0x001f); // physical G/B swap
   assert(panelColor(0,0,255,1)==0x07e0);
@@ -138,4 +140,12 @@ void independentAnimationTests(){
   for(uint32_t now=10;now<50;now+=10)f.animate(s,now);
   assert(f.slotFrame==slot&&f.slotSpinning);
 }
-int main(){settingsTests();inputTests();boopTests();faceTests();graphicsMathTests();regionTransitionTests();snapshotTests();independentAnimationTests();std::cout<<"8 C++ test groups passed\n";}
+void stationAttemptsTests(){
+  StationAttempts attempts;
+  assert(attempts.count==0&&!attempts.exhausted());
+  assert(attempts.start()&&attempts.count==1&&!attempts.exhausted());
+  assert(attempts.start()&&attempts.count==2&&attempts.exhausted());
+  assert(!attempts.start()&&attempts.count==2);
+  attempts.reset();assert(attempts.start()&&attempts.count==1);
+}
+int main(){settingsTests();inputTests();boopTests();faceTests();graphicsMathTests();regionTransitionTests();snapshotTests();independentAnimationTests();stationAttemptsTests();std::cout<<"9 C++ test groups passed\n";}

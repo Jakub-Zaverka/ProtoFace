@@ -111,6 +111,21 @@ pio run -d src_c -t buildfs
 
 ## Nahrani na desku
 
+Z korene repozitare lze firmware i filesystem sestavit a nahrat jednim prikazem:
+
+```powershell
+.\deploy_portal_c.ps1
+.\deploy_portal_c.ps1 -Port COM7 -Monitor
+```
+
+Skript vyzaduje `pio` a lokalni `src_c/data/settings.toml`, ktery neprepisuje.
+Automaticky vyhleda port; pri vice moznych deskach vyzaduje `-Port`.
+Po nahrani firmware port znovu vyhleda, protoze se pri resetu muze zmenit.
+`-Monitor` otevre serial na 115200 baud. `-FirmwareOnly` preskoci build/upload
+filesystemu (pouzij jen pokud uz jsou na desce spravne assety a konfigurace).
+`-BuildOnly` pouze sestavi obrazy a nic nenahraje. Selhani libovolneho kroku
+zastavi dalsi nahravani. Skript pouziva cestu sveho umisteni, nezavisi na cwd.
+
 Firmware i filesystem jsou dva oddelene obrazy. Arduino firmware nahrazuje
 CircuitPython runtime; Python soubory z CIRCUITPY uz nespousti. Pred prechodem
 si z CIRCUITPY uloz vlastni settings a pripadne export NVM. Pri prvnim portu
@@ -129,6 +144,13 @@ desku restartuj. Pri nenalezenem portu pouzij BOOT/reset postup pro MatrixPortal
 `partitions.csv` ponechava TinyUF2 na 0x410000 s velikosti 0x40000. LittleFS je
 na 0x310000, velikost 0x100000. Nejde o Arduino OTA aktualizace: projekt obsahuje
 jeden aplikacni slot a TinyUF2 factory slot.
+
+Runtime mountuje oddil explicitne jako
+`LittleFS.begin(false, "/littlefs", 10, "littlefs")`, podle nazvu v partitions.csv.
+Vychozi Arduino partition label `spiffs` tomuto rozlozeni neodpovida.
+Serial pri startu vypise obsazenost filesystemu a velikost povinneho
+`mouth--mouth_speak.mph`. Pokud je mount uspesny, ale soubor chybi, nahraj
+filesystem pres `uploadfs`; pri chybe mountu over take nahranou partition table.
 
 Pri startu serial vypise STA MAC pro controller a dostupnou HTTP IP. V AP rezimu
 pouzij IP, mDNS je jen ve STA. Controller musi mit tuto MAC a stejny kanal.
@@ -156,7 +178,11 @@ startech ma NVS prednost. Bez exportu zacnes s TOML/defaulty.
 - Wi-Fi STA pokusy jsou asynchronni, 10 s na profil; behem pripojovani funguje
   oblicej i menu. Zmeny site z HTTP se provedou po odeslani odpovedi, aby se
   nezrusil prave obsluhovany klient.
-- Pro 25 kHz ventilator se pouziva fyzicke **11bit LEDC** rozliseni. CircuitPython
+- Pro 25 kHz ventilator se pouziva fyzicke **10bit LEDC** rozliseni, duty 0..1023.
+  Arduino na S3 voli 40MHz XTAL; 11 bitu pri 25 kHz by inicializaci zneplatnilo.
+  Inicializace se kontroluje a `/api/perf` vraci `fan_pwm_ready` a `fan_percent`.
+  Vychozi Fan=0 znamena vypnuto; pro zkousku nastav Settings -> Fan na 100 %.
+  CircuitPython
   16bit duty_cycle je logicka skala, nikoliv pozadavek na 16bit casovac pri 25 kHz.
   Uzivatelske kroky zustavaji 0/50/100 %.
 - RTC bezi v systemovem case ESP32. NTP ma pevny offset +2 a muze se opakovane
@@ -167,12 +193,55 @@ startech ma NVS prednost. Bez exportu zacnes s TOML/defaulty.
   souradnice nepretekly; navrat do klidu stale obnovi vychozi pozice.
 - UI zustava vazane na dostupne OLED stejne jako v Pythonu. Web bez OLED vrati
   menu_snapshot_unavailable. Nepouzivane GIF vetve se neportovaly.
+  Orientace SSD1306 pouziva stejne hardwarove prikazy 0xA0/0xC0 jako Python,
+  aby odpovidala fyzickemu uchyceni OLED.
 - `Display OFF` uvolni Protomatter i obrazove cache. Pri zapnuti/jasu se obnovi
   display stack a casovani emotes. Rainbow pracuje na puvodnich barvach a jas
   se neaplikuje dvakrat.
 - `mem_free`/`mem_alloc` jsou ESP-IDF 8bit heap metriky; nejde o CircuitPython GC
   cisla. Hlavni profil zahrnuje aktivni sekce logic task; animace maji vlastni
   profil. `load_pct` neni celkove vytizeni obou CPU.
+
+## Automaticke pripojeni k domaci Wi-Fi
+
+Do lokalniho `src_c/data/settings.toml` vypln `HOME_WIFI_SSID` a
+`HOME_WIFI_PASSWORD` (pripadne i `BACKUP_WIFI_SSID`/`BACKUP_WIFI_PASSWORD`).
+Konfiguraci nahraj pres `deploy_portal_c.ps1` nebo PlatformIO `uploadfs` a
+restartuj desku. Hesla zustavaji v ignorovanem lokalnim souboru/filesystemu,
+nevypisuji se do diagnostiky.
+
+Na OLED otevri **Settings -> Wifi_Connect -> ON**. Volba se ulozi do NVS
+a po restartu se znovu pokusi pripojit. Pri neuspechu se automaticky prepne na AP:
+
+1. Nejprve se zkusi domaci profil, nejvyse 10 s.
+2. Druhy pokus pouzije zalozni profil. Pokud je vyplneny pouze jeden profil,
+   zkusi se stejna sit podruhe; prazdne profily se nepocitaji jako pokusy.
+3. Po **dvou neuspesnych pokusech** se vypne Wifi_Connect a zapne Wifi_Broadcast.
+   Spusti se vlastni AP podle AP_SSID/AP_PASSWORD, kanal 1, vcetne HTTP serveru.
+   Obe volby se ulozi do NVS, takze dalsi restart zustane v Broadcast rezimu.
+   Bez jedineho vyplneneho SSID se Broadcast spusti ihned.
+4. Uspech vynuluje pocitadlo. Pri pozdejsi ztrate spojeni zacnou nove dva
+   pokusy. Dva timeouty trvaji priblizne 20 s plus rezije Wi-Fi operaci.
+5. Pro dalsi zkousku domaci site znovu zapni Wifi_Connect; z Broadcast rezimu
+   se uz domaci sit nezkousi automaticky. Rucni prepnuti rezimu pokusy zrusi.
+
+Wifi_Connect ON znamena povolene automaticke pripojovani, nikoliv potvrzeni,
+ze je router prave dostupny. `Wifi_Broadcast` je alternativni rezim vlastniho AP;
+zapnuti jednoho rezimu vypne druhy. Kdyz je zapnuty Broadcast, domaci profil
+se nezkousi. Pri pripojeni domaci siti je web na IP vypsane do serialu nebo
+`http://protogen.local/` (pokud hostname nebyl zmenen a funguje mDNS).
+
+`/api/perf` obsahuje objekt `wifi`: `connect_enabled`, `station_connected`,
+`connecting`, `attempt`, `max_attempts`, `profile` (posledni zvoleny profil) a `ip`.
+Uspech neprepisuje ulozenou volbu; automaticky prechod po druhem neuspechu
+ulozi Wifi_Connect OFF / Wifi_Broadcast ON.
+Zabudovany SDK auto-reconnect je vypnuty, aby nesouperil s prepinanim profilu.
+Pokusy o pripojeni take neukladaji znovu credentials do SDK NVS.
+
+Overeno na desce 28. 10. 2026: po zapnuti Wifi_Connect se pripojil domaci
+profil (`connect_enabled=true`, `station_connected=true`, `profile=main`)
+a HTTP preslo na IP domaci site. Vypadek routeru a navrat do dosahu zatim
+nebyly fyzicky zkousene; limit dvou pokusu a reset pocitadla maji host test.
 
 ## Dve jadra a predavani stavu
 
@@ -247,17 +316,24 @@ Host overeni **27. 10. 2026**:
 
 - sestaveni firmware pro skutecny ESP32-S3 target;
 - sestaveni LittleFS obrazu s puvodnimi 18 BMP, 51 MPH a webem;
-- osm skupin C++ testu: verze/perzistence, ESP-NOW a menu, boop tracker,
+- devet skupin C++ testu: verze/perzistence, ESP-NOW a menu, boop tracker,
   priority emotes/mic/Slots/blink, barvy/casovani, navraty regionu pres morph,
-  snapshoty/stari vstupu/tick a nezavisla interpolace bez posouvani citacu;
+  snapshoty/stari vstupu/tick, nezavisla interpolace bez posouvani citacu
+  a limit dvou Wi-Fi pokusu s resetem pocitadla;
 - kontrola vsech MPH1 hlavicek, poctu snimku a souradnic;
 - SHA-256 shoda assetu s aktualni Python referenci.
+
+Overeni startu na desce **28. 10. 2026**: po oprave explicitniho partition
+labelu byl firmware nahran na MatrixPortal S3. Serial potvrdil mount LittleFS
+`380928/1048576` B, povinny mouth prechod `7113` B, start HTTP AP a obou uloh.
+Uzivatel potvrdil rozsviceni RGB matice. To overuje start a dostupnost assetu;
+nepotvrzuje vsechny senzory, kvalitu animaci ani skutecnou rezervu pameti.
 
 Host testy potrebuji `g++` nebo `clang++` v PATH. Python zde pouze spousti
 kompilator/testy a kontroluje soubory, na desce zadny Python nebezi.
 
-**Hardware zatim neoveren:** nebyl proveden upload, mereni soubehu jader, vizualni porovnani,
-mereni runtime RAM ani zkouska senzoru/controlleru. Pred pouzitim projdi
+**Zbyva overit na hardwaru:** mereni soubehu jader, vizualni porovnani,
+mereni runtime RAM a zkouska senzoru/controlleru. Pred pouzitim projdi
 UC01-UC16 z puvodniho README, zejmena barvy/zrcadleni obou panelu, otoceni
 Smooth Speak v prubehu animace, dlouhe OLED polozky, restarty s NVS a soubeh
 Wi-Fi/rainbow/Slots. Velikost `.data/.bss` z kompilatoru neni runtime RAM
