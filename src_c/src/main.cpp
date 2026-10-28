@@ -72,6 +72,11 @@ void addTaskMetrics(JsonDocument& doc){
   a["input_stale"]=animationStatus.inputStale;
   a["status_age_ms"]=animationStatus.core<0?0:uint32_t(millis()-animationStatus.updatedAt);
   a["error"]=animationStatus.error;
+  const auto& slots=animationStatus.slots;
+  auto slot=doc["slots"].to<JsonObject>();
+  slot["spin_id"]=slots.spinId;slot["spinning"]=slots.spinning;slot["has_result"]=slots.hasResult;
+  slot["result"]=slotOutcomeName(slots.outcome);
+  auto symbols=slot["symbols"].to<JsonArray>();for(auto value:slots.symbols)symbols.add(slotSymbolName(value));
 }
 
 void log(const String& message){Serial.println(message);logs.push_back(message);if(logs.size()>100)logs.pop_front();}
@@ -271,6 +276,7 @@ void logicStep(){
   if(restartRequest.due(millis())){ESP.restart();return;}
   uint32_t now=millis();perf.begin(micros());
   if(animation.status(animationStatus)){
+    oled.setSlots(animationStatus.slots);
     String error=animationStatus.error;
     if(error!=lastAnimationError){if(error.length())log(error);lastAnimationError=error;}
   }

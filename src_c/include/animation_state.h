@@ -23,6 +23,7 @@ struct AnimationStatus {
   int core=-1;
   uint32_t updatedAt=0,frames=0,logicalTicks=0,stackFreeBytes=0;
   float periodAvgMs=0,periodMaxMs=0,workAvgMs=0,workMaxMs=0;
+  SlotSnapshot slots;
   char error[128]{};
 };
 static_assert(std::is_trivially_copyable<AnimationInput>::value,"Queue input must be a value snapshot");

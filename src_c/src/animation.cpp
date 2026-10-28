@@ -88,6 +88,7 @@ void AnimationWorker::run(){
     }
     state.ready=graphics.ready();state.boopActive=state.ready&&face.boopActive();
     state.fullscreen=state.ready&&face.regions[3].active;
+    state.slots=face.slots.status;
     state.inputStale=uint32_t(now-input.sampledAt)>SensorStaleMs;
     state.core=xPortGetCoreID();state.updatedAt=millis();
     state.stackFreeBytes=uxTaskGetStackHighWaterMark(nullptr);

@@ -25,6 +25,7 @@ class AssetStore {
 class Graphics {
   AssetStore assets;
   std::unique_ptr<Adafruit_Protomatter> matrix;
+  std::unique_ptr<GFXcanvas16> dynamicCanvas,reelCanvas;
   struct Layer {
     Asset shown=Asset::None;
     Image bitmap;
@@ -42,11 +43,12 @@ class Graphics {
   uint8_t phase=0,cadence=0;
   bool lastRainbow=false,force=true;
   std::string lastClock;
-  std::array<int,3> lastSymbols{{-1,-1,-1}};
+  std::array<uint8_t,3> lastSymbols{{255,255,255}};
   bool lastSpinning=false;
+  bool lastCelebrating=false;
   bool updateLayer(int,Asset,bool,bool,uint32_t);
   void sparse(Layer&,const MorphRef&,int);
-  void dynamic(Layer&,Asset,const Face&,const String&);
+  void dynamic(Layer&,Asset,const Face&,const String&,uint32_t now);
  public:
   explicit Graphics(fs::FS& filesystem):assets(filesystem){}
   bool begin(const Settings&);

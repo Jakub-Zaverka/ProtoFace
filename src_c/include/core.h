@@ -4,10 +4,11 @@
 #include <deque>
 #include <string>
 #include <vector>
+#include "slots.h"
 
 namespace proto {
 // Original Python loop measured about 50 ms. Use one logical tick per 50 ms
-// (without catch-up bursts) for counter-based blink/boop/slots/motion.
+// (without catch-up bursts) for counter-based blink/boop/motion.
 constexpr uint32_t TickMs = 50;
 constexpr uint32_t WifiAttemptMs=10000;
 struct StationAttempts {
@@ -121,10 +122,10 @@ struct Face {
     Region(Asset::Mouth),Region(Asset::None)}};
   std::array<Request,4> requests;
   uint32_t speakUntil=0,lastSpeak=0;
-  bool speaking=false,speakManaged=false,slotLatched=false,slotSpinning=false;
+  bool speaking=false,speakManaged=false;
   float speakLevel=0,speakTarget=0;
-  int blinkTicks=0,slotFrame=0;
-  std::array<int,3> symbols{{0,1,2}};
+  int blinkTicks=0;
+  SlotMachine slots;
   bool boopActive() const { return regions[0].active && regions[0].current==Asset::Open; }
   // randomWord is supplied by hardware or by deterministic host tests.
   void update(const Settings&,int menuEmote,const Sample&,int threshold,

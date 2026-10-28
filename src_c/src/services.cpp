@@ -133,7 +133,10 @@ String Oled::settingText(int i,const Settings& s)const{
   return SettingFlags[i]>=0?(s.get(Flag(SettingFlags[i]))?"ON":"OFF"):"";
 }
 void Oled::render(Menu& menu,const Settings& settings,const String& clock,const std::vector<String>& debug){
-  if(!present)return;font(settings.font);display.clearDisplay();
+  if(!present)return;font(settings.font);
+  bool slotDetail=menu.screen==Screen::Detail&&menu.emote==14;
+  if(slotDetail){scaleNum=scaleDen=1;}
+  display.clearDisplay();
   int l=menu.list(),row=0,cw=charWidth(),lh=lineHeight();std::vector<String> lines;
   auto wrap=[&](String value){do{
     int width=row?128:std::max(cw,128-int(clock.length())*cw-2);
@@ -156,6 +159,13 @@ void Oled::render(Menu& menu,const Settings& settings,const String& clock,const 
       if(used&&used+rows[i]>budget)break;
       wrap((i==menu.selected[l]?String("> "):String("  "))+labels[i]);used+=rows[i];if(used>=budget)break;
     }
+  }else if(slotDetail){
+    wrap("Slots");wrap(slots.spinning?"TOCENI...":"BOOP = START");
+    for(int reel=0;reel<3;reel++){
+      bool stopped=slots.stoppedMask&(1<<reel);
+      wrap(String(reel+1)+": "+(stopped?slotSymbolName(slots.symbols[reel]):"..."));
+    }
+    wrap("VYSLEDEK:");wrap(slotOutcomeName(slots.outcome));wrap("PREV/NEXT = BACK");
   }else if(menu.screen==Screen::Detail){wrap("Emote:");wrap(EmoteItems[menu.emote]);wrap("PREV/NEXT=BACK");}
   else if(menu.screen==Screen::Debug){wrap("Debug");for(auto line:debug){if(row*lh>=64)break;wrap(line);}}
   else{wrap("Main");wrap("PREV/NEXT=BACK");}
@@ -184,7 +194,18 @@ void Oled::snapshot(JsonDocument& doc,Menu& menu,const Settings& s,const String&
         else if(i==5||i==HwResetSetting)e["value"]=true;else e["value"]=settingText(i,s);
         e["display_value"]=settingText(i,s);}}
   }else{doc["selected_index"]=nullptr;
-    if(menu.screen==Screen::Detail){auto e=items.add<JsonObject>();e["index"]=0;e["label"]=EmoteItems[menu.emote];e["selected"]=true;}
+    if(menu.screen==Screen::Detail){auto e=items.add<JsonObject>();e["index"]=0;e["label"]=EmoteItems[menu.emote];e["selected"]=true;
+      if(menu.emote==14){
+        auto slot=doc["slots"].to<JsonObject>();slot["spinning"]=slots.spinning;slot["has_result"]=slots.hasResult;
+        slot["spin_id"]=slots.spinId;slot["result"]=slotOutcomeName(slots.outcome);
+        auto symbols=slot["symbols"].to<JsonArray>();
+        for(int i=0;i<3;i++){
+          const char* name=(slots.stoppedMask&(1<<i))?slotSymbolName(slots.symbols[i]):"...";symbols.add(name);
+          auto line=items.add<JsonObject>();line["index"]=i+1;line["label"]=String(i+1)+": "+name;line["selected"]=false;
+        }
+        auto result=items.add<JsonObject>();result["index"]=4;result["label"]=slotOutcomeName(slots.outcome);result["selected"]=false;
+      }
+    }
     if(menu.screen==Screen::Debug)for(int i=0;i<std::min(int(debug.size()),visibleRows());i++){
       auto e=items.add<JsonObject>();e["index"]=i;e["label"]=debug[i];e["selected"]=false;}}
   doc["scroll_offset"]=scroll;auto controls=doc["controls"].to<JsonArray>();for(auto c:{"up","ok","down","back","refresh"})controls.add(c);

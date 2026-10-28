@@ -93,15 +93,8 @@ void Face::update(const Settings& s,int menu,const Sample& v,int threshold,uint3
   requests={};
   auto req=[&](int region,Asset a,int duration=1,bool red=false){requests[region]={a,duration,red};};
   bool slotBoop=v.proxValid&&v.proximity>threshold;
-  if(menu==14){
-    if(slotBoop&&!slotLatched&&!slotSpinning){slotSpinning=true;slotFrame=0;}
-    slotLatched=slotBoop;
-    if(slotSpinning){++slotFrame;int cadence=slotFrame<12?1:2;
-      if(slotFrame%cadence==0)for(int i=0;i<3;i++)if(slotFrame<=(16+i*6)) {
-        rnd=rnd*1664525u+1013904223u;symbols[i]=(rnd>>16)%6; }
-      if(slotFrame>=28)slotSpinning=false;
-    }
-  }else{slotLatched=false;slotSpinning=false;}
+  if(menu==14)slots.update(slotBoop,now,rnd);
+  else slots.leave();
   switch(menu){
     case 0:req(0,Asset::Hearth);break;
     case 1:req(0,Asset::Blink);req(2,Asset::Flat);break;
@@ -153,6 +146,7 @@ void Face::update(const Settings& s,int menu,const Sample& v,int threshold,uint3
   if((started&&regions[0].current!=Asset::Blink)||menu>=0)blinkTicks=0;
 }
 void Face::animate(const Settings& s,uint32_t now){
+  slots.advance(now);
   if(!speakManaged)return;
   float delta=uint32_t(now-lastSpeak)/200.f;lastSpeak=now;
   if(s.get(SmoothSpeak)||s.get(SmoothTransitions))

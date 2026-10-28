@@ -17,14 +17,16 @@ void symbol(GFXcanvas16& c,int s,int x,int y,uint16_t col){
   auto line=[&](int a,int b,int d,int e){c.drawLine(x+a,y+b,x+d,y+e,col);};
   switch(s){
     case 0:line(-4,-5,4,-5);line(4,-5,-1,5);break;
-    case 1:line(-4,-4,4,-4);line(4,-4,4,4);line(4,4,-4,4);line(-4,4,-4,-4);break;
-    case 2:{static const int8_t points[][2]={{-2,-5},{-1,-5},{0,-5},{1,-5},{2,-5},
-      {-4,-3},{4,-3},{-5,-2},{5,-2},{-5,-1},{5,-1},{-5,0},{5,0},{-5,1},{5,1},
-      {-5,2},{5,2},{-4,3},{4,3},{-2,5},{-1,5},{0,5},{1,5},{2,5}};
-      for(auto& p:points)c.drawPixel(x+p[0],y+p[1],col);break;}
-    case 3:line(0,-5,-5,5);line(-5,5,5,5);line(5,5,0,-5);break;
-    case 4:line(0,-6,-5,0);line(-5,0,0,6);line(0,6,5,0);line(5,0,0,-6);break;
-    default:line(0,-5,0,5);line(-5,0,5,0);break;
+    case 1:{
+      c.drawRect(x-7,y-5,15,11,col);
+      static const uint8_t letters[3][5]={{6,5,6,5,6},{2,5,7,5,5},{6,5,6,5,5}};
+      for(int ch=0;ch<3;ch++)for(int yy=0;yy<5;yy++)for(int xx=0;xx<3;xx++)
+        if(letters[ch][yy]&(1<<(2-xx)))c.drawPixel(x-5+ch*4+xx,y-2+yy,col);
+      break;}
+    case 2:c.fillCircle(x-3,y+2,3,col);c.fillCircle(x+3,y+3,3,col);line(-3,-1,1,-6);line(3,0,1,-6);line(1,-6,5,-4);break;
+    case 3:c.fillRoundRect(x-4,y-4,9,9,3,col);c.drawFastHLine(x-6,y+5,13,col);c.fillCircle(x,y-6,1,col);c.drawPixel(x,y+7,col);break;
+    case 4:c.fillTriangle(x,y-6,x-5,y,x+5,y,col);c.fillTriangle(x-5,y,x+5,y,x,y+6,col);line(-2,-1,0,-4);break;
+    default:line(0,-6,4,5);line(4,5,-6,-2);line(-6,-2,6,-2);line(6,-2,-4,5);line(-4,5,0,-6);break;
   }
 }
 }
@@ -89,6 +91,8 @@ bool Graphics::begin(const Settings& s){
   static uint8_t rgb[]={42,41,40,38,39,37},addr[]={45,36,48,35};
   matrix.reset(new Adafruit_Protomatter(128,2,1,rgb,4,addr,2,47,14,true));
   auto status=matrix->begin();if(status!=PROTOMATTER_OK){assets.error="Protomatter begin failed: "+String(int(status));matrix.reset();return false;}
+  dynamicCanvas.reset(new GFXcanvas16(64,32));reelCanvas.reset(new GFXcanvas16(17,22));
+  if(!dynamicCanvas->getBuffer()||!reelCanvas->getBuffer()){assets.error="Cannot allocate dynamic canvases";matrix.reset();return false;}
   speak=assets.morph(Asset::Mouth,Asset::Speak,64,16);
   if(!speak.morph){assets.error="Missing/invalid mandatory mouth--mouth_speak.mph";matrix.reset();return false;}
   for(int a=1;a<=int(Asset::UwuFull);a++)if(!assets.image(Asset(a))){matrix.reset();return false;}
@@ -100,7 +104,7 @@ bool Graphics::begin(const Settings& s){
     layers[i].bitmap.height=i==3?32:16;layers[i].bitmap.pixels.resize(layers[i].bitmap.width*layers[i].bitmap.height);}
   x={{1,32,0,0}};y={{0,0,16,0}};phase=cadence=0;force=true;return true;
 }
-void Graphics::end(){if(matrix){matrix->fillScreen(0);matrix->show();matrix.reset();}speak={};for(auto& l:layers)l=Layer{};assets.clear();}
+void Graphics::end(){if(matrix){matrix->fillScreen(0);matrix->show();matrix.reset();}dynamicCanvas.reset();reelCanvas.reset();speak={};for(auto& l:layers)l=Layer{};assets.clear();}
 void Graphics::motion(const Sample& v,bool enabled,bool fullscreen){
   if(!enabled||fullscreen||!v.motionValid)return;
   if(std::abs(v.dx)>1||std::abs(v.dy)>1||std::abs(v.dz)>1){
@@ -130,16 +134,37 @@ bool Graphics::updateLayer(int i,Asset a,bool red,bool smooth,uint32_t now){
   }
   return changed;
 }
-void Graphics::dynamic(Layer& l,Asset a,const Face& face,const String& clock){
-  GFXcanvas16 c(64,32);c.fillScreen(0);uint16_t white=panelColor(255,255,255,assets.brightness);
+void Graphics::dynamic(Layer& l,Asset a,const Face& face,const String& clock,uint32_t now){
+  GFXcanvas16& c=*dynamicCanvas;c.fillScreen(0);uint16_t white=panelColor(255,255,255,assets.brightness);
   if(a==Asset::Clock){for(int i=0;i<5&&i<int(clock.length());i++)glyph(c,clock[i],3+i*12,9,2,white);}
   else if(a==Asset::Name){const uint8_t text[]={'Z','T','R','A','C','E','N',221};for(int i=0;i<8;i++)glyph(c,text[i],5+i*7,12,1,white);}
   else{
-    const uint32_t palette[]={0,0xffffff,0xff2020,0xffd020,0x20d0ff,0x40ff60,0xd060ff};uint16_t p[7];
-    for(int i=0;i<7;i++)p[i]=panelColor(palette[i]>>16,palette[i]>>8,palette[i],assets.brightness);
-    c.drawRect(2,2,60,28,p[3]);c.drawFastVLine(22,4,24,p[1]);c.drawFastVLine(41,4,24,p[1]);
-    const int centers[]={12,32,51};for(int i=0;i<3;i++)symbol(c,face.symbols[i],centers[i],16,p[1+face.symbols[i]%6]);
-    if(face.slotSpinning)for(int yy:{7,11,21,25}){c.drawPixel(4,yy,p[4]);c.drawPixel(59,yy,p[4]);}
+    const auto& machine=face.slots;
+    const uint32_t palette[]={0xff3030,0xffffff,0xff3048,0xffd030,0x30dfff,0xff60ff};uint16_t p[6];
+    for(int i=0;i<6;i++)p[i]=panelColor(palette[i]>>16,palette[i]>>8,palette[i],assets.brightness);
+    uint16_t gold=panelColor(255,180,20,assets.brightness),dim=panelColor(60,32,8,assets.brightness);
+    bool flash=machine.celebrating(now)&&((now-machine.finishedAt)/150)%2==0;
+    uint16_t border=flash?panelColor(60,255,80,assets.brightness):gold;
+    c.drawRect(0,0,64,32,border);
+    for(int x=2;x<63;x+=4){uint16_t lamp=machine.status.spinning?(((x/4+now/80)%3)==0?white:dim):border;
+      c.drawFastHLine(x,1,2,lamp);c.drawFastHLine(x,30,2,lamp);}
+    for(int reel=0;reel<3;reel++){
+      auto& window=*reelCanvas;window.fillScreen(panelColor(6,12,24,assets.brightness));
+      float position=machine.position[reel];int base=int(position);float fraction=position-base;
+      int offset=int(fraction*18+.5f);
+      // Three adjacent symbols share one clipped reel viewport, moving downward.
+      for(int k=-1;k<=1;k++){
+        int which=(base+k+6)%6;int cy=11+offset-k*18;
+        symbol(window,which,8,cy,p[which]);
+      }
+      c.drawRect(3+20*reel,3,19,26,border);
+      c.drawRGBBitmap(4+20*reel,5,window.getBuffer(),17,22);
+      // Rim shading makes the strip look like a cylindrical reel.
+      c.drawFastHLine(4+20*reel,4,17,dim);c.drawFastHLine(4+20*reel,27,17,dim);
+    }
+    // Payline markers remain outside the reels, so symbols stay readable.
+    c.drawPixel(1,15,white);c.drawFastVLine(2,14,3,white);
+    c.drawPixel(62,15,white);c.drawFastVLine(61,14,3,white);
   }
   std::copy(c.getBuffer(),c.getBuffer()+2048,l.bitmap.pixels.begin());
 }
@@ -154,11 +179,13 @@ void Graphics::render(const Face& face,const Settings& settings,uint32_t now,con
       (a==Asset::Speak||layers[i].shown==Asset::Speak)),now);
     if(i==2&&face.speakManaged){layers[i].morph={};sparse(layers[i],speak,int(face.speakLevel*6+.5f));}
     if(a==Asset::Clock&&(changed||lastClock!=clock.c_str())){
-      dynamic(layers[i],a,face,clock);lastClock=clock.c_str();
+      dynamic(layers[i],a,face,clock,now);lastClock=clock.c_str();
     }
-    if(a==Asset::Name&&changed)dynamic(layers[i],a,face,clock);
-    if(a==Asset::Slots&&(changed||lastSymbols!=face.symbols||lastSpinning!=face.slotSpinning)){
-      dynamic(layers[i],a,face,clock);lastSymbols=face.symbols;lastSpinning=face.slotSpinning;
+    if(a==Asset::Name&&changed)dynamic(layers[i],a,face,clock,now);
+    if(a==Asset::Slots&&(changed||face.slots.status.spinning||face.slots.celebrating(now)||
+       lastCelebrating!=face.slots.celebrating(now)||lastSymbols!=face.slots.status.symbols||lastSpinning!=face.slots.status.spinning)){
+      dynamic(layers[i],a,face,clock,now);lastSymbols=face.slots.status.symbols;lastSpinning=face.slots.status.spinning;
+      lastCelebrating=face.slots.celebrating(now);
     }
   }
   frame.fill(0);

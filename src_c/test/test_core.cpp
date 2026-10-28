@@ -63,11 +63,11 @@ void faceTests(){
   v.proxValid=true;v.proximity=225;f.update(s,-1,v,225,7100,1);assert(!f.boopActive());
   v.proximity=226;f.update(s,-1,v,225,7150,1);assert(f.boopActive());
   // Slots: one rising edge, no automatic restart with held proximity.
-  f=Face{};for(int tick=0;tick<40;tick++)f.update(s,14,v,225,tick*50,123);
-  assert(!f.slotSpinning&&f.slotFrame==28);auto symbols=f.symbols;
-  f.update(s,14,v,225,2050,123);assert(f.symbols==symbols);
-  v.proximity=0;f.update(s,14,v,225,2100,123);v.proximity=226;f.update(s,14,v,225,2150,123);assert(f.slotSpinning&&f.slotFrame==1);
-  f.update(s,-1,v,225,2200,123);assert(!f.slotSpinning&&!f.slotLatched);
+  f=Face{};for(int tick=0;tick<70;tick++)f.update(s,14,v,225,tick*50,123);
+  assert(!f.slots.status.spinning&&f.slots.status.hasResult);auto symbols=f.slots.status.symbols;
+  f.update(s,14,v,225,3500,123);assert(f.slots.status.symbols==symbols&&f.slots.status.spinId==1);
+  v.proximity=0;f.update(s,14,v,225,3550,123);v.proximity=226;f.update(s,14,v,225,3600,123);assert(f.slots.status.spinning&&f.slots.status.spinId==2);
+  f.update(s,-1,v,225,3650,123);assert(!f.slots.status.spinning&&!f.slots.boopLatched);
   // Smooth Speak turns around from the current level, not from an endpoint.
   f=Face{};s.set(SmoothSpeak,true);v={};v.micValid=true;v.mic=5;
   f.update(s,-1,v,225,0,1);assert(f.speakLevel==0);
@@ -127,7 +127,7 @@ void independentAnimationTests(){
   int blink=f.blinkTicks;uint32_t hold=f.speakUntil;
   for(uint32_t now=10;now<=100;now+=10)f.animate(s,now);
   assert(std::abs(f.speakLevel-.5f)<1e-5);
-  assert(f.blinkTicks==blink&&f.slotFrame==0&&f.speakUntil==hold);
+  assert(f.blinkTicks==blink&&f.slots.status.spinId==0&&f.speakUntil==hold);
   f.animate(s,200);assert(std::abs(f.speakLevel-1)<1e-5);
   // With stalled logic, fresh animation ticks do not extend the mic deadline.
   AnimationInput input;input.settings=s;input.samples=sample;input.sampledAt=0;
@@ -135,11 +135,11 @@ void independentAnimationTests(){
   float level=f.speakLevel;
   f.animate(s,350);assert(f.speakLevel<level);
   f.animate(s,550);assert(f.speakLevel==0&&!f.regions[2].active);
-  // Rendering must not advance the slot-machine's logical counter.
+  // Reels animate between sensor ticks without retriggering the spin.
   f=Face{};sample={};sample.proxValid=true;sample.proximity=230;
-  f.update(s,14,sample,225,0,1);int slot=f.slotFrame;
+  f.update(s,14,sample,225,0,1);float slot=f.slots.position[0];
   for(uint32_t now=10;now<50;now+=10)f.animate(s,now);
-  assert(f.slotFrame==slot&&f.slotSpinning);
+  assert(f.slots.position[0]>slot&&f.slots.status.spinning&&f.slots.status.spinId==1);
 }
 void stationAttemptsTests(){
   StationAttempts attempts;
@@ -181,4 +181,26 @@ void panelTests(){
   assert(!Panels[1].contains(63,0)&&!Panels[1].contains(128,0));
   assert(!Panels[0].contains(0,32)&&!Panels[1].contains(64,-1));
 }
-int main(){settingsTests();inputTests();boopTests();faceTests();graphicsMathTests();regionTransitionTests();snapshotTests();independentAnimationTests();stationAttemptsTests();restartTests();panelTests();std::cout<<"11 C++ test groups passed\n";}
+void slotMachineTests(){
+  assert(SlotMachine::evaluate({{0,0,0}})==SlotOutcome::Jackpot);
+  assert(SlotMachine::evaluate({{2,2,2}})==SlotOutcome::Triple);
+  assert(SlotMachine::evaluate({{1,2,1}})==SlotOutcome::Pair);
+  assert(SlotMachine::evaluate({{1,1,2}})==SlotOutcome::Pair);
+  assert(SlotMachine::evaluate({{2,1,1}})==SlotOutcome::Pair);
+  assert(SlotMachine::evaluate({{0,1,2}})==SlotOutcome::Miss);
+  SlotMachine a,b;a.update(true,0,123);b.update(true,0,123);
+  for(uint32_t t=10;t<1700;t+=10)a.advance(t);
+  assert(a.status.stoppedMask==0&&a.status.spinning);
+  a.advance(1700);assert(a.status.stoppedMask==1);
+  float first=a.position[0];a.advance(2200);assert(a.status.stoppedMask==3&&a.position[0]==first);
+  a.advance(2700);b.advance(2700);
+  assert(a.status.hasResult&&!a.status.spinning&&a.status.stoppedMask==7);
+  assert(a.position==b.position&&a.status.symbols==b.status.symbols);
+  for(int i=0;i<3;i++)assert(int(a.position[i])%6==a.status.symbols[i]);
+  a.update(true,3000,456);assert(a.status.spinId==1);
+  a.update(false,3050,456);a.update(true,3100,456);assert(a.status.spinId==2);
+  a.update(false,3150,456);a.update(true,3200,456);assert(a.status.spinId==2); // no retrigger during a spin
+  a.leave();assert(!a.status.spinning&&!a.status.hasResult&&!a.boopLatched);
+  b=SlotMachine{};b.update(true,0xfffffff0u,99);b.advance(uint32_t(0xfffffff0u+2700));assert(b.status.hasResult);
+}
+int main(){settingsTests();inputTests();boopTests();faceTests();graphicsMathTests();regionTransitionTests();snapshotTests();independentAnimationTests();stationAttemptsTests();restartTests();panelTests();slotMachineTests();std::cout<<"12 C++ test groups passed\n";}

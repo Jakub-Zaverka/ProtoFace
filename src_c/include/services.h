@@ -35,12 +35,14 @@ class Oled {
   std::array<uint8_t,1024> previous{};
   bool present=false,rendered=false;
   int scaleNum=3,scaleDen=2;
+  SlotSnapshot slots;
   int extent(int n) const { return (n*scaleNum+scaleDen-1)/scaleDen; }
   void text(const String&,int x,int y,int maxWidth);
  public:
   Oled():display(128,64,&Wire,-1,400000,400000){}
   bool begin(bool enabled);
   bool ready()const{return present;}
+  void setSlots(const SlotSnapshot& value){slots=value;}
   void font(uint8_t index);
   int charWidth()const{return extent(5)+1;}
   int lineHeight()const{return extent(7)+1;}

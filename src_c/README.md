@@ -167,7 +167,7 @@ startech ma NVS prednost. Bez exportu zacnes s TOML/defaulty.
 ## Casovani a vedome rozdily proti Pythonu
 
 - Logicky tick je **50 ms**, podle priblizne 50-55ms smycky popsane v puvodnim
-  README. Blink 125 zpusobilych kroku, boop 5, blink trvani 16 a Slots 28 kroku
+  README. Blink 125 zpusobilych kroku, boop 5 a blink trvani 16 kroku
   zustavaji pocitadlove. Pri pretezene smycce se nedohaneji v davce.
 - Casove prechody a Smooth Speak pouzivaji skutecny monotonic cas 200 ms;
   renderovaci uloha je posouva s cilovym intervalem 10 ms. Rozhodovani o
@@ -242,6 +242,31 @@ Overeno na desce 28. 10. 2026: po zapnuti Wifi_Connect se pripojil domaci
 profil (`connect_enabled=true`, `station_connected=true`, `profile=main`)
 a HTTP preslo na IP domaci site. Vypadek routeru a navrat do dosahu zatim
 nebyly fyzicky zkousene; limit dvou pokusu a reset pocitadla maji host test.
+
+## Kasino Slots a vysledek na OLED
+
+Emotes -> Slots a novy boop spusti tri svisle rolujici valce. Kazdy valec ma
+vlastni pozici a kubicke zpomalovani; zastavi se po 1.7 / 2.2 / 2.7 s.
+Okno valce oreze sousedni symboly, zlaty ram ma bezici svetla a stredovou
+vyherni linku. Symboly: 7, BAR, tresne (CHERRY), zvonek (BELL), diamant (GEM),
+hvezda (STAR). Pri shode ram 1.6 s blika.
+
+Vysledek se urci pri zacatku spinu, animace k nemu dojede. Rychlost smycky
+ani zpozdeny snimek nemeni cilove symboly. Podrzena ruka neroztaci znovu;
+dalsi boop behem toceni se ignoruje. Odchod ze Slots roztočení zrusi.
+Dokonceny vysledek zustava do dalsiho spinu/obnoveni display stacku;
+restart ho neuklada do NVS.
+
+Vnitrni OLED ma pro Slots vlastni kompaktni 1x sazbu: TOCENI, tri radky se
+symboly, vysledek a navrat. Ostatni menu zachovavaji zvoleny Font.
+Dosud nezastavene valce maji `...`. Vysledek je BEZ VYHRY / DVOJICE / TROJICE;
+tri sedmicky znamenaji JACKPOT. Nejsou penize, kredity ani sazky.
+
+Animacni jadro predava hodnotovy SlotSnapshot pres existujici frontu.
+OLED zustava na logic jadre a odesila I2C framebuffer jen pri zmene.
+Vykreslovaci canvasy jsou predalokovane a opakovane se pouzivaji.
+`/api/menu` v detailu Slots i `/api/perf` obsahuji objekt `slots` se symboly,
+spin_id, spinning, has_result a result. Webove menu zobrazuje i vysledek.
 
 ## Restart desky z menu
 
@@ -320,9 +345,9 @@ flowchart LR
   jako neplatny. Zaseknuty HTTP klient nebo pomaly OLED tak nenecha stale
   aktivni mluveni/boop/pohyb podle stare hodnoty. Menu, nastaveni a posledni
   text hodin zustavaji platne; blink, Slots a dobehy animaci pokracuji.
-- Zvetseni render frekvence nezrychluje blink, Slots, kumulativni pohyb ani
+- Zvetseni render frekvence nezrychluje blink, kumulativni pohyb ani
   rainbow: jejich citace se meni jen v 50ms logickem ticku. `Face::animate`
-  mezi ticky pouze interpoluje usta, bez prodluzovani mikrofonniho hold.
+  mezi ticky interpoluje usta a casove valce Slots, bez prodluzovani mikrofonniho hold.
 - LittleFS se mountuje pred startem animation task a pak se jen cte,
   kazda uloha ma vlastni File handle. Menu a vsechny I2C pristupy patri pouze
   logic task. JSON i logovaci buffer take zustavaji v jedne uloze.
@@ -354,12 +379,13 @@ Host overeni **27. 10. 2026**:
 
 - sestaveni firmware pro skutecny ESP32-S3 target;
 - sestaveni LittleFS obrazu s puvodnimi 18 BMP, 51 MPH a webem;
-- jedenact skupin C++ testu: verze/perzistence, ESP-NOW a menu, boop tracker,
+- dvanact skupin C++ testu: verze/perzistence, ESP-NOW a menu, boop tracker,
   priority emotes/mic/Slots/blink, barvy/casovani, navraty regionu pres morph,
   snapshoty/stari vstupu/tick, nezavisla interpolace bez posouvani citacu
   limit dvou Wi-Fi pokusu s resetem pocitadla a akce/odlozeni HW Reset
   vcetne preteceni millis a nezavisle mapovani panelu s asymetrickym vzorem
-  a kontrolou hranic viewportu;
+  a kontrolou hranic viewportu, casove valce/vysledky Slots vcetne zpozdeni,
+  preteceni millis, poradi zastaveni a boop latch;
 - kontrola vsech MPH1 hlavicek, poctu snimku a souradnic;
 - SHA-256 shoda assetu s aktualni Python referenci.
 
