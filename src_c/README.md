@@ -253,6 +253,34 @@ az po navratu z HTTP handleru, aby se stihla odeslat odpoved. Opakovany stisk
 neposouva naplanovany restart. Po restartu se znovu inicializuji obe ulohy
 a periferie. Jde o restart mikrokontroleru, nikoliv odpojeni napajeni cele masky.
 
+## Leva a prava RGB matice
+
+Zapojeni masky je **ESP -> levy 64x32 panel -> pravy 64x32 panel**.
+Mapovani kazde strany je explicitne v `include/panels.h`:
+
+| Panel | Sloupce framebufferu | Dilci regiony obliceje | Fullscreen text/symboly |
+|---|---|---|---|
+| Levy, prvni v retezci | 64..127 | puvodni nezrcadlena souradnice | bez zrcadleni |
+| Pravy, druhy v retezci | 0..63 | puvodni vodorovne zrcadleni | bez zrcadleni |
+
+Fyzicke poradi v retezci se nesmi zamenit s poradim polovin framebufferu:
+uzivatelsky test potvrdil, ze prvni pokus upravil opacny panel. Fullscreen se
+proto vykresluje bez vodorovneho zrcadleni v obou logickych polovinach.
+Oblicej nadale pouziva puvodni symetricke mapovani kolem nosu.
+Oprava zahrnuje Clock, Name, UwU Full
+a Slots; neprevraci osu Y ani poradi panelu. Oci/pusa/nos se touto textovou
+korekci nemeni. Kazda strana ma vlastni 64x32 viewport, aby pri pohybu pixely
+nepretekaly do druheho fyzickeho panelu.
+
+Bitmapy a snimky morphu mohou zustat sdilene; na fyzicky panel se mapuji
+az pri vykresleni. Neni treba regenerovat BMP/MPH nebo nahravat filesystem.
+Pri overeni zvol Emotes -> Name a Clock, zkontroluj citelnost zvenku z obou
+stran a potom idle oblicej, aby nos zustal u predniho okraje masky.
+
+Rozliseni symetrickeho obliceje a citelnych textovych obrazovek pouziva take
+[MochiiTracer](https://github.com/mochiitheproto/mochiitracer); skutecna
+orientace nasi masky je nastavena podle zde potvrzeneho zapojeni a symptomu.
+
 ## Dve jadra a predavani stavu
 
 Pouziva se primo oficialni ESP-IDF FreeRTOS
@@ -326,11 +354,12 @@ Host overeni **27. 10. 2026**:
 
 - sestaveni firmware pro skutecny ESP32-S3 target;
 - sestaveni LittleFS obrazu s puvodnimi 18 BMP, 51 MPH a webem;
-- deset skupin C++ testu: verze/perzistence, ESP-NOW a menu, boop tracker,
+- jedenact skupin C++ testu: verze/perzistence, ESP-NOW a menu, boop tracker,
   priority emotes/mic/Slots/blink, barvy/casovani, navraty regionu pres morph,
   snapshoty/stari vstupu/tick, nezavisla interpolace bez posouvani citacu
   limit dvou Wi-Fi pokusu s resetem pocitadla a akce/odlozeni HW Reset
-  vcetne preteceni millis;
+  vcetne preteceni millis a nezavisle mapovani panelu s asymetrickym vzorem
+  a kontrolou hranic viewportu;
 - kontrola vsech MPH1 hlavicek, poctu snimku a souradnic;
 - SHA-256 shoda assetu s aktualni Python referenci.
 

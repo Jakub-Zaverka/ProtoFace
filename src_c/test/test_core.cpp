@@ -1,5 +1,6 @@
 #include "core.h"
 #include "animation_state.h"
+#include "panels.h"
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -158,4 +159,26 @@ void restartTests(){
   restart=RestartRequest{};restart.request(0xfffffff0u);
   assert(!restart.due(20)&&restart.due(284));
 }
-int main(){settingsTests();inputTests();boopTests();faceTests();graphicsMathTests();regionTransitionTests();snapshotTests();independentAnimationTests();stationAttemptsTests();restartTests();std::cout<<"10 C++ test groups passed\n";}
+void panelTests(){
+  // Face mapping stays symmetric; text reads forward in both logical halves.
+  for(int width:{32,64})for(int x=0;x<width;x++){
+    assert(Panels[0].pixelX(x,width,false)==width-1-x);
+    assert(Panels[0].pixelX(x,width,true)==x);
+    assert(Panels[1].pixelX(x,width,false)==x);
+    assert(Panels[1].pixelX(x,width,true)==x);
+  }
+  // An asymmetric row must retain its source order in BOTH fullscreen halves.
+  const int row[]={1,0,0,1,1,0,0,0};int left[8]{},rightFace[8]{},rightText[8]{};
+  for(int x=0;x<8;x++){
+    left[Panels[0].pixelX(x,8,true)]=row[x];
+    rightFace[Panels[1].pixelX(x,8,false)]=row[x];
+    rightText[Panels[1].pixelX(x,8,true)]=row[x];
+  }
+  for(int x=0;x<8;x++){assert(left[x]==row[x]);assert(rightFace[x]==row[x]);assert(rightText[x]==row[x]);}
+  assert(Panels[0].contains(0,0)&&Panels[0].contains(63,31));
+  assert(!Panels[0].contains(64,0)&&!Panels[0].contains(-1,0));
+  assert(Panels[1].contains(64,0)&&Panels[1].contains(127,31));
+  assert(!Panels[1].contains(63,0)&&!Panels[1].contains(128,0));
+  assert(!Panels[0].contains(0,32)&&!Panels[1].contains(64,-1));
+}
+int main(){settingsTests();inputTests();boopTests();faceTests();graphicsMathTests();regionTransitionTests();snapshotTests();independentAnimationTests();stationAttemptsTests();restartTests();panelTests();std::cout<<"11 C++ test groups passed\n";}

@@ -1,5 +1,6 @@
 #include "graphics.h"
 #include "fonts.h"
+#include "panels.h"
 #include <algorithm>
 #include <cstring>
 #include <cmath>
@@ -163,15 +164,17 @@ void Graphics::render(const Face& face,const Settings& settings,uint32_t now,con
   frame.fill(0);
   // TileGroups are opaque, including black. Copy nose, eye, mouth, then whole.
   const int order[]={1,0,2,3};bool whole=face.regions[3].active;
-  for(int side=0;side<2;side++)for(int idx:order){
+  for(int side=0;side<PanelCount;side++)for(int idx:order){
     if((whole&&idx!=3)||(!whole&&idx==3))continue;
     auto& l=layers[idx];int w=l.bitmap.width,h=l.bitmap.height;
-    int sourceX=idx==0?31:0;int baseX=side?sourceX:x[idx];int baseY=y[idx];
-    if(side)baseX+=x[idx]-(64-sourceX-w);
+    const auto& panel=Panels[side];
+    int sourceX=idx==0?31:0;int baseX=x[idx],baseY=y[idx];
+    if(!panel.mirrorFaceX)baseX=sourceX+x[idx]-(PanelWidth-sourceX-w);
     for(int yy=0;yy<h;yy++)for(int xx=0;xx<w;xx++){
-      int localX=side?xx:w-1-xx;int destX=side*64+baseX+localX,destY=baseY+yy;
-      // A displayio screen Group does not clip at its 64px boundary.
-      if(destX<0||destX>=128||destY<0||destY>=32)continue;
+      int localX=panel.pixelX(xx,w,whole);
+      int destX=panel.offsetX+baseX+localX,destY=baseY+yy;
+      // Independent physical viewports: motion must not spill onto the other side.
+      if(!panel.contains(destX,destY))continue;
       uint16_t color=l.bitmap.pixels[yy*w+xx];
       if(color){if(rainbow)color=wheel[(localX*10+yy*16+phase*8)&255];
         else if(l.red)color=panelColor(255,0,0,assets.brightness);}
